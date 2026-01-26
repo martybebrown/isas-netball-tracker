@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Square, Plus, Trash2, BarChart2, CheckCircle, Clock, Save, Maximize, Minimize, Settings, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trophy, Activity, Cloud, Loader2, AlertCircle, Calendar, Target, ClipboardList, History, Dumbbell, Layers, FastForward, GripVertical, RefreshCcw, Database, Info, LayoutGrid, List } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, setDoc } from 'firebase/firestore';
 
 // --- Constants & Config ---
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -31,17 +31,26 @@ const CATEGORY_TEXT_COLORS = {
   "School": "text-purple-400"
 };
 
-// --- Historical Seed Data ---
+// --- Historical Seed Data (Matches Spreadsheet) ---
 const generateHistoricalData = () => {
   const logs = [];
+  
+  // Helper: Create date relative to "Week 5" (Current Week)
+  // weekOffset: 0 = Current (Week 5), 1 = Last Week (Week 4), etc.
   const createDate = (weekOffset, dayIndex) => {
-    const d = new Date(); 
+    const d = new Date(); // Uses system time
     const currentDay = d.getDay(); 
+    // Calculate distance to this week's Monday (if Sun(0), go back 6 days)
     const diffToMon = d.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
     const monday = new Date(d.setDate(diffToMon));
     monday.setHours(12, 0, 0, 0); 
+    
+    // Go back 'weekOffset' weeks
     monday.setDate(monday.getDate() - (weekOffset * 7));
+    
+    // Go forward to specific day (0=Mon, 6=Sun)
     monday.setDate(monday.getDate() + dayIndex);
+    
     return monday.toISOString();
   };
 
@@ -51,12 +60,12 @@ const generateHistoricalData = () => {
       date: createDate(weekOffset, dayIndex),
       drillName: name || category,
       category: category,
-      duration: hours * 60, 
+      duration: hours * 60, // store in minutes
       createdAt: Date.now()
     });
   };
 
-  // Week 4 (1 Week Ago)
+  // WEEK 4 (1 Week Ago) - Total 11.2h
   addLog(1, 0, "Self Training", 1.2, "Monday Session"); 
   addLog(1, 1, "Self Training", 3.0, "Tuesday Grind");   
   addLog(1, 2, "Self Training", 3.0, "Wednesday Grind");   
@@ -64,7 +73,7 @@ const generateHistoricalData = () => {
   addLog(1, 4, "Self Training", 0.75, "Friday Session"); 
   addLog(1, 5, "Self Training", 0.25, "Saturday Light"); 
 
-  // Week 3 (2 Weeks Ago)
+  // WEEK 3 (2 Weeks Ago) - Total 12.8h
   addLog(2, 0, "Self Training", 3.0, "Monday Session");
   addLog(2, 1, "Self Training", 3.0, "Tuesday Session");
   addLog(2, 2, "Self Training", 3.0, "Wednesday Session");
@@ -74,12 +83,12 @@ const generateHistoricalData = () => {
   addLog(2, 5, "Training", 1.0, "Josh's Training");
   addLog(2, 6, "Self Training", 0.3, "Sunday Recovery");
 
-  // Week 2 (3 Weeks Ago)
+  // WEEK 2 (3 Weeks Ago) - Total 3.5h
   addLog(3, 1, "Self Training", 1.0, "Tuesday Session");
   addLog(3, 2, "Self Training", 1.5, "Wednesday Session");
   addLog(3, 6, "Self Training", 1.0, "Sunday Session");
 
-  // Week 1 (4 Weeks Ago)
+  // WEEK 1 (4 Weeks Ago) - Total 3.0h
   addLog(4, 3, "Self Training", 1.0, "Thursday Session");
   addLog(4, 4, "Self Training", 0.5, "Friday Session");
   addLog(4, 5, "Self Training", 1.0, "Saturday Session");
@@ -88,15 +97,18 @@ const generateHistoricalData = () => {
   return logs;
 };
 
-// --- Firebase Setup ---
+// --- Firebase Setup (Safe Fallback) ---
 let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 try {
   let firebaseConfig = null;
+  // 1. Try global variable (Canvas/Preview environment)
   if (typeof __firebase_config !== 'undefined') {
     firebaseConfig = JSON.parse(__firebase_config);
-  } else if (import.meta.env.VITE_FIREBASE_API_KEY) {
+  } 
+  // 2. Try Vite env variables (Local/Netlify deployment)
+  else if (import.meta.env.VITE_FIREBASE_API_KEY) {
     firebaseConfig = {
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
       authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -111,6 +123,8 @@ try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+  } else {
+    // console.warn("Firebase Config not found. App will run in Offline Mode.");
   }
 } catch (error) {
   console.error("Firebase init failed:", error);
@@ -188,6 +202,7 @@ const EditGoalModal = ({ currentGoal, onSave, onClose }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-slate-900 border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl p-6">
         <h3 className="font-bold text-lg text-white uppercase tracking-wide mb-4">Edit Targets</h3>
+        
         <div className="space-y-4 mb-6">
           <div>
             <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Weekly Goal (Hours)</label>
@@ -215,6 +230,7 @@ const EditGoalModal = ({ currentGoal, onSave, onClose }) => {
             />
           </div>
         </div>
+
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button onClick={() => { onSave(parseFloat(goal)); onClose(); }}>Save Goal</Button>
@@ -241,6 +257,7 @@ const EditDrillModal = ({ drill, onSave, onDelete, onClose }) => {
             <X size={20} />
           </button>
         </div>
+        
         <div className="p-6 space-y-5">
           <div>
             <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Drill Name</label>
@@ -251,6 +268,7 @@ const EditDrillModal = ({ drill, onSave, onDelete, onClose }) => {
               className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all placeholder:text-slate-600"
             />
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Duration (mins)</label>
@@ -275,6 +293,7 @@ const EditDrillModal = ({ drill, onSave, onDelete, onClose }) => {
             </div>
           </div>
         </div>
+
         <div className="p-4 bg-slate-800/30 border-t border-white/5 flex justify-between gap-3">
           <Button variant="danger" onClick={() => { onDelete(drill.id); onClose(); }}>
             <Trash2 size={18} /> Delete
@@ -316,6 +335,7 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
             <X size={20} />
           </button>
         </div>
+
         <div className="p-4 flex-1 overflow-y-auto">
           <div className="mb-6 bg-slate-800/50 p-4 rounded-xl border border-white/5">
             <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Rest Between Drills (Seconds)</label>
@@ -326,6 +346,7 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
               className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-xl font-mono focus:border-lime-400 focus:outline-none"
             />
           </div>
+
           <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Drill Sequence</h4>
           <div className="space-y-2">
             {queue.map((drill, index) => (
@@ -361,6 +382,7 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
             ))}
           </div>
         </div>
+
         <div className="p-4 border-t border-white/5 bg-slate-800/30">
           <Button onClick={() => onStart(queue, restTime)} className="w-full py-4 text-lg">
             Start Runthrough ({queue.length} Drills)
@@ -372,6 +394,7 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
 };
 
 // --- Runthrough Active View ---
+
 const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isResting, setIsResting] = useState(false);
@@ -379,6 +402,8 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const [isActive, setIsActive] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cumulativeTime, setCumulativeTime] = useState(0);
+  
+  // Use a Ref to hold the AudioContext to prevent leaks (browsers limit contexts to ~6)
   const audioCtxRef = useRef(null);
 
   const currentDrill = queue[currentIndex];
@@ -388,6 +413,7 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
                          + timeLeft 
                          + ((queue.length - 1 - currentIndex) * restDuration);
 
+  // Cleanup Audio Context on unmount
   useEffect(() => {
     return () => {
       if (audioCtxRef.current) {
@@ -410,11 +436,14 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   }, [isActive, timeLeft]);
 
   const handlePhaseComplete = () => {
+    // Attempt beep
     playBeep(isResting ? 880 : 440);
+
     if (!isResting) {
       const duration = currentDrill.defaultTime; 
       onCompleteLog(currentDrill, duration); 
       setCumulativeTime(prev => prev + duration * 60);
+
       if (currentIndex < queue.length - 1) {
         setIsResting(true);
         setTimeLeft(restDuration);
@@ -437,13 +466,17 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const playBeep = (freq = 440) => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
+      // Initialize Context if null (Lazy load to respect browser autoplay policies)
       if (!audioCtxRef.current) {
         audioCtxRef.current = new AudioContext();
       }
+      
       const ctx = audioCtxRef.current;
+      // Resume if suspended (common browser requirement)
       if (ctx.state === 'suspended') {
         ctx.resume();
       }
+
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -1112,7 +1145,7 @@ const CalendarHeatmap = ({ logs }) => {
 
 // --- Stats Page ---
 
-const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
+const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData, onSyncLocal }) => {
   const [viewType, setViewType] = useState('weekly'); 
   const [weekOffset, setWeekOffset] = useState(0); 
   const [showGoalModal, setShowGoalModal] = useState(false);
@@ -1299,9 +1332,12 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
         )}
       </div>
 
-      <div className="border-t border-white/5 pt-8 flex justify-center">
+      <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-center gap-4">
          <Button variant="secondary" onClick={onSeedData} className="w-full md:w-auto">
-           <Database size={16} /> Reset Data to History
+           <RefreshCcw size={16} /> Reset Local Data
+         </Button>
+         <Button variant="primary" onClick={onSyncLocal} className="w-full md:w-auto">
+           <Cloud size={16} /> Sync Local to Cloud
          </Button>
       </div>
     </div>
@@ -1373,25 +1409,41 @@ export default function App() {
     }
   }, [user]);
 
-  const handleSeedData = async () => {
-    const history = generateHistoricalData();
-    if (user && db) {
-      if (confirm("This will upload Weeks 1-4 history to the database. Continue?")) {
-        const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
-        try {
-          for (const log of history) {
-            const { id, ...logData } = log;
-            await addDoc(logsRef, logData);
-          }
-          alert("Database seeded successfully!");
-        } catch (e) {
-          alert("Failed to seed database.");
-        }
-      }
-    } else {
+  const handleSeedData = () => {
+    if (confirm("Reset local data to spreadsheet history (Weeks 1-4)? This will overwrite local changes.")) {
+      const history = generateHistoricalData();
       setLogs(history);
       localStorage.setItem('soccer_logs_v6_local', JSON.stringify(history));
-      alert("Local data reset to history!");
+      alert("Local data reset successfully!");
+    }
+  };
+
+  const handleSyncLocal = async () => {
+    if (!user || !db) return alert("Database not connected. Check environment variables.");
+    
+    const savedLogs = localStorage.getItem('soccer_logs_v6_local');
+    if (!savedLogs) return alert("No local data found.");
+    
+    if (confirm("Upload all local records to the database? This might create duplicates if already synced.")) {
+      const localData = JSON.parse(savedLogs);
+      let count = 0;
+      try {
+        for (const log of localData) {
+           if (log.id && log.id.startsWith('seed')) {
+              // For seeded data, use the ID to prevent dupes
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', log.id), log);
+           } else {
+             // For user created data, let firestore generate ID or use existing if compatible
+             const { id, ...logData } = log;
+             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
+           }
+           count++;
+        }
+        alert(`Synced ${count} records to Cloud.`);
+      } catch(e) {
+        console.error(e);
+        alert("Error syncing data.");
+      }
     }
   };
 
@@ -1566,7 +1618,7 @@ export default function App() {
 
         {view === 'runthrough_setup' && <RunthroughSetupModal drills={drills} onStart={handleStartRunthrough} onClose={() => setView('drills')} />}
         {view === 'runthrough_active' && <RunthroughTimer queue={runthroughQueue} restDuration={runthroughRest} onCompleteLog={handleRunthroughLog} onExit={() => setView('drills')} />}
-        {view === 'stats' && <StatsDashboard logs={logs} weeklyGoal={weeklyGoal} setWeeklyGoal={handleSetGoal} onSeedData={handleSeedData} />}
+        {view === 'stats' && <StatsDashboard logs={logs} weeklyGoal={weeklyGoal} setWeeklyGoal={handleSetGoal} onSeedData={handleSeedData} onSyncLocal={handleSyncLocal} />}
 
         {view === 'activities' && (
           <div className="space-y-8 animate-in fade-in duration-500">
