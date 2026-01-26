@@ -96,9 +96,24 @@ let app, auth, db;
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 try {
-  // Check if configuration exists before initializing
+  let firebaseConfig = null;
+  // 1. Try global variable (Canvas/Preview environment)
   if (typeof __firebase_config !== 'undefined') {
-    const firebaseConfig = JSON.parse(__firebase_config);
+    firebaseConfig = JSON.parse(__firebase_config);
+  } 
+  // 2. Try Vite env variables (Local/Netlify deployment)
+  else if (import.meta.env.VITE_FIREBASE_API_KEY) {
+    firebaseConfig = {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID
+    };
+  }
+
+  if (firebaseConfig) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
@@ -556,29 +571,13 @@ const CalendarHeatmap = ({ logs }) => {
   const [hoverDay, setHoverDay] = useState(null);
   const [viewMode, setViewMode] = useState('day'); // 'day' | 'week'
 
-  // Generate calendar grid from start of 2026
+  // Generate calendar grid (last 16 weeks)
+  const weeks = 16;
+  const days = weeks * 7;
   const today = new Date();
-  const startDate = new Date('2026-01-01');
-  
-  // Calculate total days from start of 2026 to today/end of view
-  // We'll show full year or up to current? Let's show up to current + buffer or fixed range
-  // Let's show full 2026 year for structure, or dynamic.
-  // Dynamic weeks from start date
-  const timeDiff = today.getTime() - startDate.getTime();
-  const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
-  const totalDays = Math.max(dayDiff + 7, 365); // At least show a year structure? or just up to now.
-  // Let's just show up to today + 1 week for now to keep it clean, aligned to weeks.
-  
-  // Align start date to previous Monday
-  const day = startDate.getDay();
-  const diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
-  const gridStartDate = new Date(startDate);
-  gridStartDate.setDate(diff);
-
-  const daysToShow = Math.ceil((today.getTime() - gridStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 7;
-  // Ensure full weeks
-  const totalWeeks = Math.ceil(daysToShow / 7);
-  const adjustedTotalDays = totalWeeks * 7;
+  const endDate = new Date(today);
+  const startDate = new Date(today);
+  startDate.setDate(endDate.getDate() - days + 1);
 
   // Map logs to date strings 'YYYY-MM-DD'
   const logMap = logs.reduce((acc, log) => {
@@ -592,22 +591,22 @@ const CalendarHeatmap = ({ logs }) => {
   }, {});
 
   const getDayData = (offset) => {
-    const d = new Date(gridStartDate);
-    d.setDate(gridStartDate.getDate() + offset);
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + offset);
     const dateStr = d.toDateString();
     const data = logMap[dateStr];
     return { date: d, data };
   };
 
   const grid = [];
-  for (let i = 0; i < adjustedTotalDays; i++) {
+  for (let i = 0; i < days; i++) {
     grid.push(getDayData(i));
   }
 
   // --- Week View Data Aggregation ---
   const weeklyData = [];
   if (viewMode === 'week') {
-    for (let i = 0; i < totalWeeks; i++) {
+    for (let i = 0; i < weeks; i++) {
       const weekStart = grid[i * 7].date;
       let weekTotal = 0;
       let weekActivities = {};
@@ -660,7 +659,7 @@ const CalendarHeatmap = ({ logs }) => {
         {viewMode === 'day' ? (
           <div className="flex gap-1 min-w-max">
             {/* Day View Grid */}
-            {Array.from({ length: totalWeeks }).map((_, weekIndex) => (
+            {Array.from({ length: weeks }).map((_, weekIndex) => (
               <div key={weekIndex} className="flex flex-col gap-1">
                 {Array.from({ length: 7 }).map((_, dayIndex) => {
                   const dayOffset = weekIndex * 7 + dayIndex;
@@ -796,8 +795,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
   // Active Weeks Calculation for All-Time Avg
   const uniqueWeeks = new Set(logs.map(l => {
     const d = new Date(l.date);
-    // Rough week identifier: Year-WeekNum could be better, but simplified:
-    // Just count unique Mondays
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(d.setDate(diff));
@@ -822,15 +819,9 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
   }
   
   // Chart Scaling & Goal Line
-  // Goal Line: (Weekly Goal / 7) mins
   const dailyGoalMins = (weeklyGoal / 7) * 60;
-  
-  // Ensure chart scales to accommodate either the highest logged day OR the daily goal (whichever is higher), plus buffer
   const maxDailyDuration = Math.max(...chartData, dailyGoalMins, 60);
-  
-  // Correct percentage calculation for the line position relative to the max height of the chart
   const goalLinePct = (dailyGoalMins / maxDailyDuration) * 100;
-  
   const maxHours = Math.ceil(maxDailyDuration / 60);
   const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -867,7 +858,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
           <div className="text-3xl font-bold text-white tracking-tight">{totalHours}h</div>
         </Card>
         
-        {/* Conditional Goal Progress Card */}
         <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
@@ -891,7 +881,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
       </div>
 
       <div className={`grid grid-cols-1 ${viewType === 'all' ? 'md:grid-cols-1' : 'md:grid-cols-2'} gap-6`}>
-        {/* Heatmap takes full width in All view */}
         {viewType === 'all' && (
           <CalendarHeatmap logs={logs} />
         )}
@@ -918,7 +907,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
           <Card>
             <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Weekly Activity</h3>
             <div className="relative h-32 mt-4">
-              {/* Daily Average Goal Line */}
               <div 
                 className="absolute w-full border-t border-dashed border-lime-400/50 z-10 pointer-events-none"
                 style={{ bottom: `${goalLinePct}%` }}
@@ -927,7 +915,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
               </div>
 
               <div className="flex items-end justify-between h-full pt-4 px-6 gap-2 relative">
-                 {/* Y-Axis Labels */}
                  <div className="absolute left-0 top-0 bottom-6 w-4 flex flex-col justify-between text-[8px] text-slate-600 font-mono">
                    <span>{maxHours}h</span>
                    <span>{maxHours/2}h</span>
@@ -975,7 +962,6 @@ export default function App() {
   const [runthroughRest, setRunthroughRest] = useState(30);
 
   useEffect(() => {
-    // Only init auth if Firebase was initialized successfully
     if (auth) {
       const initAuth = async () => {
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -993,23 +979,20 @@ export default function App() {
   // Fetch Logs (or load local)
   useEffect(() => {
     if (user && db) {
-      // Online Mode
       const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        // Fix: Ensure Firestore ID takes priority over any id stored in data
         const fetchedLogs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         setLogs(fetchedLogs);
       }, (error) => console.error("Error fetching logs:", error));
       return () => unsubscribe();
     } else {
-      // Offline/Local Mode
-      const savedLogs = localStorage.getItem('soccer_logs_v5_local');
+      const savedLogs = localStorage.getItem('soccer_logs_v6_local');
       if (savedLogs) {
         setLogs(JSON.parse(savedLogs));
       } else {
         const historicalData = generateHistoricalData();
         setLogs(historicalData);
-        localStorage.setItem('soccer_logs_v5_local', JSON.stringify(historicalData));
+        localStorage.setItem('soccer_logs_v6_local', JSON.stringify(historicalData));
       }
     }
   }, [user]);
@@ -1020,7 +1003,6 @@ export default function App() {
       const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'drills'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
-          // Fix: Ensure Firestore ID takes priority
           setDrills(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         }
       }, (error) => console.error("Error fetching drills:", error));
@@ -1038,7 +1020,6 @@ export default function App() {
         const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
         try {
           for (const log of history) {
-            // Remove local ID before sending to DB to avoid confusion
             const { id, ...logData } = log;
             await addDoc(logsRef, logData);
           }
@@ -1048,9 +1029,8 @@ export default function App() {
         }
       }
     } else {
-      // Local seed
       setLogs(history);
-      localStorage.setItem('soccer_logs_v5_local', JSON.stringify(history));
+      localStorage.setItem('soccer_logs_v6_local', JSON.stringify(history));
       alert("Local data reset to history!");
     }
   };
@@ -1067,7 +1047,6 @@ export default function App() {
 
   const handleAddDrill = async (drill) => {
     if (user && db) {
-      // Remove ID before saving to let Firestore handle it
       const { id, ...drillData } = drill;
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'drills'), drillData);
     } else {
@@ -1104,7 +1083,7 @@ export default function App() {
     } else {
       const updatedLogs = [...logs, { ...newLog, id: Date.now().toString() }];
       setLogs(updatedLogs);
-      localStorage.setItem('soccer_logs_v5_local', JSON.stringify(updatedLogs));
+      localStorage.setItem('soccer_logs_v6_local', JSON.stringify(updatedLogs));
     }
   };
 
@@ -1178,7 +1157,7 @@ export default function App() {
     } else {
       const updatedLogs = logs.filter(log => log.id !== id);
       setLogs(updatedLogs);
-      localStorage.setItem('soccer_logs_v5_local', JSON.stringify(updatedLogs));
+      localStorage.setItem('soccer_logs_v6_local', JSON.stringify(updatedLogs));
     }
   };
 
@@ -1188,7 +1167,7 @@ export default function App() {
     } else {
       const updatedLogs = logs.map(log => log.id === updatedLog.id ? updatedLog : log);
       setLogs(updatedLogs);
-      localStorage.setItem('soccer_logs_v5_local', JSON.stringify(updatedLogs));
+      localStorage.setItem('soccer_logs_v6_local', JSON.stringify(updatedLogs));
     }
   };
 
@@ -1249,7 +1228,7 @@ export default function App() {
                 {!user ? <Loader2 size={16} /> : <Cloud size={16} className="text-lime-400" />}
               </div>
               <div className="flex-1">
-                {!user ? <span>Connecting to Database...</span> : <span><strong className="text-lime-400 uppercase tracking-wide">Online:</strong> Database Connected.</span>}
+                {!user ? <span>Connecting to Database... (Check Env Vars if stuck)</span> : <span><strong className="text-lime-400 uppercase tracking-wide">Online:</strong> Database Connected.</span>}
               </div>
             </div>
           </div>
@@ -1258,5 +1237,5 @@ export default function App() {
         {view === 'timer' && activeDrill && <Timer drill={activeDrill} onComplete={handleCompleteSession} onCancel={() => setView('drills')} />}
       </main>
     </div>
-  );
+  ); 
 }
