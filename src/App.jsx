@@ -1327,6 +1327,15 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData, onSyncLoc
           </Card>
         )}
       </div>
+
+      <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-center gap-4">
+         <Button variant="secondary" onClick={onSeedData} className="w-full md:w-auto">
+           <RefreshCcw size={16} /> Reset Local Data
+         </Button>
+         <Button variant="primary" onClick={onSyncLocal} className="w-full md:w-auto">
+           <Cloud size={16} /> Sync Local to Cloud
+         </Button>
+      </div>
     </div>
   );
 };
@@ -1437,6 +1446,35 @@ export default function App() {
     }
   };
 
+  const handleSyncLocal = async () => {
+    if (!user || !db) return alert("Database not connected. Check environment variables.");
+    
+    const savedLogs = localStorage.getItem('soccer_logs_v6_local');
+    if (!savedLogs) return alert("No local data found.");
+    
+    if (confirm("Upload all local records to the database? This might create duplicates if already synced.")) {
+      const localData = JSON.parse(savedLogs);
+      let count = 0;
+      try {
+        for (const log of localData) {
+           if (log.id && log.id.startsWith('seed')) {
+              // For seeded data, use the ID to prevent dupes
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', log.id), log);
+           } else {
+             // For user created data, let firestore generate ID or use existing if compatible
+             const { id, ...logData } = log;
+             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
+           }
+           count++;
+        }
+        alert(`Synced ${count} records to Cloud.`);
+      } catch(e) {
+        console.error(e);
+        alert("Error syncing data.");
+      }
+    }
+  };
+
   const handleSetGoal = (newGoal) => {
     setWeeklyGoal(newGoal);
     localStorage.setItem('soccer_goal', newGoal.toString());
@@ -1461,7 +1499,7 @@ export default function App() {
   const handleUpdateDrill = async (updatedDrill) => {
     if (user && db) {
       const { id, ...drillData } = updatedDrill;
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'drills', id), drillData);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'drills', String(id)), drillData, { merge: true });
     } else {
       const updated = drills.map(d => d.id === updatedDrill.id ? updatedDrill : d);
       setDrills(updated);
@@ -1471,7 +1509,7 @@ export default function App() {
 
   const handleDeleteDrill = async (id) => {
     if (user && db) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'drills', id));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'drills', String(id)));
     } else {
       const updated = drills.filter(d => d.id !== id);
       setDrills(updated);
@@ -1550,7 +1588,7 @@ export default function App() {
       duration: duration,
       createdAt: Date.now()
     };
-    saveLog(newLog); 
+    saveLog(newLog, true); 
   };
 
   const handleDeleteLog = async (id) => {
@@ -1608,7 +1646,7 @@ export default function App() {
 
         {view === 'runthrough_setup' && <RunthroughSetupModal drills={drills} onStart={handleStartRunthrough} onClose={() => setView('drills')} />}
         {view === 'runthrough_active' && <RunthroughTimer queue={runthroughQueue} restDuration={runthroughRest} onCompleteLog={handleRunthroughLog} onExit={() => setView('drills')} />}
-        {view === 'stats' && <StatsDashboard logs={logs} weeklyGoal={weeklyGoal} setWeeklyGoal={handleSetGoal} onSeedData={handleSeedData} />}
+        {view === 'stats' && <StatsDashboard logs={logs} weeklyGoal={weeklyGoal} setWeeklyGoal={handleSetGoal} onSeedData={handleSeedData} onSyncLocal={handleSyncLocal} />}
 
         {view === 'activities' && (
           <div className="space-y-8 animate-in fade-in duration-500">
