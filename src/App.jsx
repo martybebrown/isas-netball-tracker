@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Plus, Trash2, BarChart2, CheckCircle, Clock, Save, Maximize, Minimize, Settings, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trophy, Activity, Cloud, Loader2, AlertCircle, Calendar, Target, ClipboardList, History, Dumbbell, Layers, FastForward, GripVertical, RefreshCcw, Database } from 'lucide-react';
+import { Play, Pause, Square, Plus, Trash2, BarChart2, CheckCircle, Clock, Save, Maximize, Minimize, Settings, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trophy, Activity, Cloud, Loader2, AlertCircle, Calendar, Target, ClipboardList, History, Dumbbell, Layers, FastForward, GripVertical, RefreshCcw, Database, Info, LayoutGrid, List } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query } from 'firebase/firestore';
@@ -16,6 +16,20 @@ const DEFAULT_DRILLS = [
   { id: 5, name: "Match Day", defaultTime: 90, category: "Match" },
   { id: 6, name: "PE / School", defaultTime: 45, category: "School" }
 ];
+
+const CATEGORY_COLORS = {
+  "Self Training": "bg-lime-500",
+  "Training": "bg-blue-500",
+  "Match": "bg-yellow-500",
+  "School": "bg-purple-500"
+};
+
+const CATEGORY_TEXT_COLORS = {
+  "Self Training": "text-lime-400",
+  "Training": "text-blue-400",
+  "Match": "text-yellow-400",
+  "School": "text-purple-400"
+};
 
 // --- Historical Seed Data (Matches Spreadsheet) ---
 const generateHistoricalData = () => {
@@ -149,24 +163,56 @@ const ManualEntryModal = ({ title, initialDuration, onSave, onClose }) => {
 
 const EditGoalModal = ({ currentGoal, onSave, onClose }) => {
   const [goal, setGoal] = useState(currentGoal);
+  const [dailyGoal, setDailyGoal] = useState((currentGoal / 7).toFixed(2));
+
+  const handleWeeklyChange = (val) => {
+    const g = parseFloat(val);
+    setGoal(g);
+    setDailyGoal((g / 7).toFixed(2));
+  };
+
+  const handleDailyChange = (val) => {
+    const d = parseFloat(val);
+    setDailyGoal(d);
+    setGoal((d * 7).toFixed(1));
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-slate-900 border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl p-6">
-        <h3 className="font-bold text-lg text-white uppercase tracking-wide mb-4">Weekly Goal</h3>
-        <div className="mb-6">
-          <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Target Hours</label>
-          <input 
-            type="number" 
-            step="0.5"
-            value={goal}
-            onChange={(e) => setGoal(parseFloat(e.target.value))}
-            className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-2xl font-mono focus:border-lime-400 focus:outline-none"
-          />
+        <h3 className="font-bold text-lg text-white uppercase tracking-wide mb-4">Edit Targets</h3>
+        
+        <div className="space-y-4 mb-6">
+          <div>
+            <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Weekly Goal (Hours)</label>
+            <input 
+              type="number" 
+              step="0.5"
+              value={goal}
+              onChange={(e) => handleWeeklyChange(e.target.value)}
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-2xl font-mono focus:border-lime-400 focus:outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="h-px bg-white/10 flex-1"></div>
+            <span className="text-xs text-slate-500 uppercase">OR</span>
+            <div className="h-px bg-white/10 flex-1"></div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-blue-400 uppercase mb-2">Daily Average (Hours)</label>
+            <input 
+              type="number" 
+              step="0.1"
+              value={dailyGoal}
+              onChange={(e) => handleDailyChange(e.target.value)}
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-xl font-mono focus:border-blue-400 focus:outline-none"
+            />
+          </div>
         </div>
+
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => { onSave(goal); onClose(); }}>Save</Button>
+          <Button onClick={() => { onSave(parseFloat(goal)); onClose(); }}>Save Goal</Button>
         </div>
       </div>
     </div>
@@ -505,375 +551,204 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   );
 };
 
-const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDeleteDrill, onAddDrill, onStartRunthrough }) => {
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingDrill, setEditingDrill] = useState(null);
-  const [manualEntryDrill, setManualEntryDrill] = useState(null);
-  const [newDrill, setNewDrill] = useState({ name: '', defaultTime: 15, category: 'Self Training' });
+// --- Heatmap Component ---
+const CalendarHeatmap = ({ logs }) => {
+  const [hoverDay, setHoverDay] = useState(null);
+  const [viewMode, setViewMode] = useState('day'); // 'day' | 'week'
 
-  const handleAdd = () => {
-    if (newDrill.name) {
-      onAddDrill({ ...newDrill, id: Date.now() });
-      setNewDrill({ name: '', defaultTime: 15, category: 'Self Training' });
-      setIsAdding(false);
+  // Generate calendar grid from start of 2026
+  const today = new Date();
+  const startDate = new Date('2026-01-01');
+  
+  // Calculate total days from start of 2026 to today/end of view
+  // We'll show full year or up to current? Let's show up to current + buffer or fixed range
+  // Let's show full 2026 year for structure, or dynamic.
+  // Dynamic weeks from start date
+  const timeDiff = today.getTime() - startDate.getTime();
+  const dayDiff = Math.ceil(timeDiff / (1000 * 3600 * 24));
+  const totalDays = Math.max(dayDiff + 7, 365); // At least show a year structure? or just up to now.
+  // Let's just show up to today + 1 week for now to keep it clean, aligned to weeks.
+  
+  // Align start date to previous Monday
+  const day = startDate.getDay();
+  const diff = startDate.getDate() - day + (day === 0 ? -6 : 1);
+  const gridStartDate = new Date(startDate);
+  gridStartDate.setDate(diff);
+
+  const daysToShow = Math.ceil((today.getTime() - gridStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 7;
+  // Ensure full weeks
+  const totalWeeks = Math.ceil(daysToShow / 7);
+  const adjustedTotalDays = totalWeeks * 7;
+
+  // Map logs to date strings 'YYYY-MM-DD'
+  const logMap = logs.reduce((acc, log) => {
+    const dateStr = new Date(log.date).toDateString();
+    if (!acc[dateStr]) acc[dateStr] = { total: 0, activities: {} };
+    acc[dateStr].total += log.duration;
+    // Track duration per category
+    if (!acc[dateStr].activities[log.category]) acc[dateStr].activities[log.category] = 0;
+    acc[dateStr].activities[log.category] += log.duration;
+    return acc;
+  }, {});
+
+  const getDayData = (offset) => {
+    const d = new Date(gridStartDate);
+    d.setDate(gridStartDate.getDate() + offset);
+    const dateStr = d.toDateString();
+    const data = logMap[dateStr];
+    return { date: d, data };
+  };
+
+  const grid = [];
+  for (let i = 0; i < adjustedTotalDays; i++) {
+    grid.push(getDayData(i));
+  }
+
+  // --- Week View Data Aggregation ---
+  const weeklyData = [];
+  if (viewMode === 'week') {
+    for (let i = 0; i < totalWeeks; i++) {
+      const weekStart = grid[i * 7].date;
+      let weekTotal = 0;
+      let weekActivities = {};
+      for (let j = 0; j < 7; j++) {
+        const dayData = grid[i * 7 + j].data;
+        if (dayData) {
+          weekTotal += dayData.total;
+          Object.entries(dayData.activities).forEach(([cat, dur]) => {
+            if (!weekActivities[cat]) weekActivities[cat] = 0;
+            weekActivities[cat] += dur;
+          });
+        }
+      }
+      weeklyData.push({ start: weekStart, total: weekTotal, activities: weekActivities });
     }
+  }
+
+  const getIntensity = (minutes) => {
+    if (!minutes) return "bg-slate-800/50 border-slate-800"; // Empty
+    const hours = minutes / 60;
+    // Scale: 0-0.5h (Low), 0.5-1.5h (Med), 1.5h+ (High)
+    if (hours < 0.5) return "opacity-40";
+    if (hours < 1.5) return "opacity-70";
+    return "opacity-100";
   };
 
   return (
-    <div className="space-y-6">
-      {editingDrill && (
-        <EditDrillModal 
-          drill={editingDrill} 
-          onSave={onUpdateDrill}
-          onDelete={onDeleteDrill}
-          onClose={() => setEditingDrill(null)} 
-        />
-      )}
-
-      {manualEntryDrill && (
-        <ManualEntryModal
-          title={`Log ${manualEntryDrill.name}`}
-          initialDuration={manualEntryDrill.defaultTime}
-          onSave={(duration) => onManualLog(manualEntryDrill, duration)}
-          onClose={() => setManualEntryDrill(null)}
-        />
-      )}
-
-      <div className="flex justify-between items-center gap-4">
-        <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2">
-          <Activity className="text-lime-400" /> Select Drill
-        </h2>
-        <div className="flex gap-2">
-          <Button variant="secondary" className="px-3" onClick={onStartRunthrough}>
-            <Layers size={18} /> <span className="hidden md:inline">Runthrough</span>
-          </Button>
-          <Button variant="secondary" className="px-3" onClick={() => setIsAdding(!isAdding)}>
-            <Plus size={18} /> <span className="hidden md:inline">New</span>
-          </Button>
-        </div>
-      </div>
-
-      {isAdding && (
-        <Card className="bg-lime-400/5 border-lime-400/20 mb-4 animate-in fade-in slide-in-from-top-4">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-lime-400 uppercase mb-2">New Drill Name</label>
-              <input 
-                type="text" 
-                value={newDrill.name}
-                onChange={(e) => setNewDrill({...newDrill, name: e.target.value})}
-                className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all placeholder:text-slate-600"
-                placeholder="e.g. Penalty Kicks"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Duration (mins)</label>
-                <input 
-                  type="number" 
-                  value={newDrill.defaultTime}
-                  onChange={(e) => setNewDrill({...newDrill, defaultTime: parseInt(e.target.value)})}
-                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Category</label>
-                <select 
-                  value={newDrill.category}
-                  onChange={(e) => setNewDrill({...newDrill, category: e.target.value})}
-                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all appearance-none"
-                >
-                  {CATEGORIES.map(cat => (
-                    <option key={cat} value={cat} className="bg-slate-900">{cat}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setIsAdding(false)}>Cancel</Button>
-              <Button onClick={handleAdd}>Confirm</Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {drills.map(drill => (
-          <div 
-            key={drill.id} 
-            className="group relative bg-slate-900/60 backdrop-blur-md border border-white/5 p-5 rounded-2xl hover:border-lime-400/30 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+    <div className="relative p-4 bg-slate-900/50 rounded-xl border border-white/5 overflow-hidden">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-bold text-white uppercase tracking-wider text-xs flex items-center gap-2">
+          <Calendar size={14} className="text-lime-400" /> Activity Heatmap
+        </h3>
+        <div className="flex bg-slate-800 rounded-lg p-0.5">
+          <button 
+            onClick={() => setViewMode('day')}
+            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === 'day' ? 'bg-lime-400 text-black' : 'text-slate-400 hover:text-white'}`}
           >
-            {/* Hover Glow Effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-lime-400/0 via-lime-400/0 to-lime-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-            
-            {/* Header: Name & Info */}
-            <div className="relative z-10 mb-6">
-               <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-lg text-white group-hover:text-lime-400 transition-colors uppercase tracking-wide truncate max-w-[150px]">{drill.name}</h3>
-                  <span className="text-[10px] font-bold text-slate-400 bg-white/5 border border-white/5 px-2 py-1 rounded uppercase tracking-wider mt-2 inline-block">
-                    {drill.category}
-                  </span>
-                </div>
-                 <button 
-                  onClick={() => setEditingDrill(drill)}
-                  className="text-slate-600 hover:text-white transition-colors"
-                >
-                  <Pencil size={14} />
-                </button>
-              </div>
-              
-              <div className="text-center mt-4 mb-2">
-                <span className="text-5xl font-bold text-white/90 font-mono tracking-tighter">{drill.defaultTime}</span>
-                <span className="text-[10px] text-slate-500 font-bold uppercase block -mt-1">MINUTES</span>
-              </div>
-            </div>
-            
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-3 relative z-10">
-              <button 
-                onClick={() => onSelectDrill(drill)}
-                className="bg-lime-400 hover:bg-lime-300 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95"
-              >
-                <Play size={18} fill="currentColor" /> TIMER
-              </button>
-              <button 
-                onClick={() => setManualEntryDrill(drill)}
-                className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 border border-white/5"
-              >
-                <ClipboardList size={18} /> LOG
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// --- Main Components ---
-
-const DailyHistory = ({ logs, onUpdateLog, onDeleteLog }) => {
-  const [editingLog, setEditingLog] = useState(null);
-
-  // Filter for today
-  const todayStr = new Date().toDateString();
-  const todaysLogs = logs.filter(log => new Date(log.date).toDateString() === todayStr).sort((a, b) => b.date.localeCompare(a.date));
-
-  if (todaysLogs.length === 0) return null;
-
-  return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
-       {editingLog && (
-        <ManualEntryModal 
-          title={`Edit ${editingLog.drillName}`}
-          initialDuration={editingLog.duration}
-          onSave={(newDuration) => onUpdateLog({...editingLog, duration: newDuration})}
-          onClose={() => setEditingLog(null)}
-        />
-      )}
-
-      <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mt-8">
-        <span className="w-2 h-2 bg-lime-400 rounded-full inline-block"></span> Today's Activity
-      </h2>
-      <div className="space-y-2">
-        {todaysLogs.map(log => (
-          <div key={log.id} className="bg-slate-900/40 border border-white/5 p-4 rounded-xl flex justify-between items-center group hover:border-lime-400/30 transition-colors">
-            <div>
-              <div className="font-bold text-white">{log.drillName}</div>
-              <div className="text-xs text-slate-500 uppercase flex gap-2 mt-1">
-                 <span className="text-lime-400">{log.duration} min</span> • {log.category}
-                 <span className="text-slate-600">• {new Date(log.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-              </div>
-            </div>
-            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => setEditingLog(log)} className="p-2 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
-                <Pencil size={16} />
-              </button>
-              <button onClick={() => onDeleteLog(log.id)} className="p-2 hover:bg-red-500/10 rounded-full text-slate-400 hover:text-red-400 transition-colors">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const ActivitySelector = ({ onLogActivity }) => {
-  const activities = [
-    { name: "Self Training", icon: Target, color: "text-lime-400", defaultMins: 30 },
-    { name: "Training", icon: Dumbbell, color: "text-blue-400", defaultMins: 90 },
-    { name: "Match", icon: Trophy, color: "text-yellow-400", defaultMins: 90 },
-    { name: "School", icon: Calendar, color: "text-purple-400", defaultMins: 45 }
-  ];
-
-  return (
-    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4">
-      {activities.map(act => (
-        <button 
-           key={act.name}
-           onClick={() => onLogActivity(act.name, act.defaultMins)}
-           className="bg-slate-900/60 border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center gap-4 hover:border-lime-400/50 hover:bg-slate-800 transition-all group shadow-lg"
-        >
-           <div className={`p-4 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors`}>
-             <act.icon size={32} className={`${act.color} group-hover:scale-110 transition-transform`} />
-           </div>
-           <span className="font-bold text-sm text-white uppercase tracking-wider">{act.name}</span>
-        </button>
-      ))}
-    </div>
-  );
-};
-
-const Timer = ({ drill, onComplete, onCancel }) => {
-  const [timeLeft, setTimeLeft] = useState(drill.defaultTime * 60);
-  const [isActive, setIsActive] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const audioCtxRef = useRef(null);
-
-  // Clean up audio context
-  useEffect(() => {
-    return () => {
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let interval = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(time => time - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isActive) {
-      setIsActive(false);
-      setIsFinished(true);
-      playAlarm();
-    }
-    return () => clearInterval(interval);
-  }, [isActive, timeLeft]);
-
-  const playAlarm = () => {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'triangle';
-      osc.frequency.value = 880; 
-      
-      const now = ctx.currentTime;
-      gain.gain.setValueAtTime(0.5, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-      gain.gain.setValueAtTime(0.5, now + 0.6);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 1.1);
-      
-      osc.start(now);
-      osc.stop(now + 1.2);
-    } catch (e) {
-      console.error("Audio not supported");
-    }
-  };
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
-  };
-
-  const adjustTime = (minutes) => {
-    setTimeLeft(prev => Math.max(0, prev + (minutes * 60)));
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  return (
-    <div 
-      className={`flex flex-col items-center justify-center p-8 transition-all duration-500 ${
-        isFullscreen ? 'fixed inset-0 z-50 bg-black' : 'min-h-[600px] bg-transparent'
-      }`}
-    >
-      <div className={`absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-950 to-black ${isFullscreen ? '' : 'rounded-3xl border border-white/10'} -z-10`} />
-
-      <div className="absolute top-6 left-6 z-20">
-        <button onClick={toggleFullscreen} className="p-3 bg-white/5 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors backdrop-blur-sm">
-          {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
-        </button>
-      </div>
-      
-      <div className="absolute top-6 right-6 z-20">
-        <button onClick={onCancel} className="p-3 bg-white/5 rounded-full text-white/50 hover:text-white hover:bg-red-500/20 transition-colors backdrop-blur-sm">
-          <X size={24} />
-        </button>
-      </div>
-
-      <div className="text-center space-y-10 animate-in zoom-in duration-300 w-full max-w-lg">
-        <div>
-          <h2 className="text-2xl md:text-4xl font-black text-white italic uppercase tracking-widest mb-2 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">{drill.name}</h2>
-          <p className="text-lime-400 font-bold uppercase tracking-wider text-sm">{drill.category}</p>
+            By Day
+          </button>
+          <button 
+            onClick={() => setViewMode('week')}
+            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === 'week' ? 'bg-lime-400 text-black' : 'text-slate-400 hover:text-white'}`}
+          >
+            By Week
+          </button>
         </div>
-        
-        <div className="relative group">
-           {/* Time Controls */}
-           {!isActive && !isFinished && (
-            <div className={`absolute -right-4 md:-right-16 top-1/2 -translate-y-1/2 flex flex-col gap-2 transition-opacity ${isActive ? 'opacity-0' : 'opacity-100'}`}>
-              <button onClick={() => adjustTime(1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-lime-400 transition-colors">
-                <ChevronUp size={32} />
-              </button>
-              <button onClick={() => adjustTime(-1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-red-400 transition-colors">
-                <ChevronDown size={32} />
-              </button>
-            </div>
-          )}
+      </div>
+      
+      <div className="overflow-x-auto pb-2">
+        {viewMode === 'day' ? (
+          <div className="flex gap-1 min-w-max">
+            {/* Day View Grid */}
+            {Array.from({ length: totalWeeks }).map((_, weekIndex) => (
+              <div key={weekIndex} className="flex flex-col gap-1">
+                {Array.from({ length: 7 }).map((_, dayIndex) => {
+                  const dayOffset = weekIndex * 7 + dayIndex;
+                  const { date, data } = grid[dayOffset];
+                  const isToday = date.toDateString() === today.toDateString();
+                  
+                  // Render Cell Content (Split Box)
+                  const cellContent = data ? (
+                    <div className="w-full h-full flex flex-col overflow-hidden rounded-[1px]">
+                      {Object.entries(data.activities).sort((a,b) => b[1] - a[1]).map(([cat, dur], idx) => (
+                        <div 
+                          key={idx} 
+                          className={`flex-1 w-full ${CATEGORY_COLORS[cat]} ${getIntensity(dur)}`}
+                        ></div>
+                      ))}
+                    </div>
+                  ) : null;
 
-          <div className={`font-mono font-bold tabular-nums tracking-tighter transition-all select-none drop-shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
-            isFullscreen ? 'text-[20vw] md:text-[15vw]' : 'text-8xl md:text-9xl'
-          } ${timeLeft <= 10 && isActive ? 'text-red-500 animate-pulse drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : 'text-white'}`}>
-            {formatTime(timeLeft)}
-          </div>
-        </div>
-
-        {!isFinished ? (
-          <div className="flex gap-6 justify-center items-center">
-             <button 
-              onClick={onCancel}
-              className="w-16 h-16 flex items-center justify-center rounded-full bg-slate-800 border border-white/10 hover:bg-slate-700 text-slate-400 hover:text-white transition-all active:scale-95"
-            >
-              <Square size={20} fill="currentColor" />
-            </button>
-
-            <button 
-              onClick={() => setIsActive(!isActive)}
-              className="w-24 h-24 flex items-center justify-center rounded-full bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_30px_rgba(163,230,53,0.4)] transition-all hover:scale-105 active:scale-95"
-            >
-              {isActive ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-2" />}
-            </button>
+                  return (
+                    <div 
+                      key={dayOffset}
+                      onMouseEnter={() => setHoverDay({ date, data, title: date.toLocaleDateString() })}
+                      onMouseLeave={() => setHoverDay(null)}
+                      className={`w-4 h-4 rounded-sm transition-all hover:ring-2 hover:ring-white/50 cursor-pointer bg-slate-800/50 border border-white/5 ${isToday ? 'ring-1 ring-lime-400' : ''}`}
+                    >
+                      {cellContent}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="text-4xl font-black text-lime-400 uppercase tracking-tighter animate-bounce drop-shadow-[0_0_20px_rgba(163,230,53,0.5)]">DRILL COMPLETE!</div>
-            <Button 
-              onClick={() => onComplete(drill.defaultTime)} // Logging default time for now
-              className="w-full py-4 text-xl"
-            >
-              <CheckCircle size={24} /> Log Session
-            </Button>
+          <div className="flex gap-1 items-end h-32 min-w-max pt-4">
+             {/* Week View Bar Chart */}
+             {weeklyData.map((week, idx) => {
+               const heightPct = Math.min((week.total / (10 * 60)) * 100, 100); // Cap at 10h for scale
+               return (
+                 <div 
+                    key={idx} 
+                    className="w-4 bg-slate-800/50 rounded-t-sm relative group"
+                    style={{ height: '100%' }}
+                    onMouseEnter={() => setHoverDay({ date: week.start, data: week, title: `Week of ${week.start.toLocaleDateString()}` })}
+                    onMouseLeave={() => setHoverDay(null)}
+                 >
+                    <div className="absolute bottom-0 w-full flex flex-col justify-end overflow-hidden rounded-t-sm" style={{ height: `${heightPct}%` }}>
+                       {Object.entries(week.activities).map(([cat, dur], i) => (
+                         <div key={i} style={{ height: `${(dur / week.total) * 100}%` }} className={`${CATEGORY_COLORS[cat]} opacity-80`}></div>
+                       ))}
+                    </div>
+                 </div>
+               )
+             })}
           </div>
         )}
+      </div>
+
+      {/* Hover Tooltip */}
+      {hoverDay && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-slate-900 p-3 rounded-lg shadow-2xl border border-white/10 z-20 pointer-events-none min-w-[150px]">
+          <div className="text-xs font-bold text-white mb-2 border-b border-white/10 pb-1">
+            {hoverDay.title}
+          </div>
+          {hoverDay.data && hoverDay.data.total > 0 ? (
+            <div className="space-y-1">
+              {Object.entries(hoverDay.data.activities).map(([cat, dur]) => (
+                <div key={cat} className="flex justify-between text-[10px] uppercase">
+                  <span className={CATEGORY_TEXT_COLORS[cat] || "text-white"}>{cat}</span>
+                  <span className="text-white font-mono">{Math.round(dur)}m</span>
+                </div>
+              ))}
+              <div className="pt-1 mt-1 border-t border-white/5 flex justify-between text-[10px] font-bold text-white">
+                <span>Total</span>
+                <span>{(hoverDay.data.total / 60).toFixed(1)}h</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[10px] text-slate-500 italic">No activity recorded</div>
+          )}
+        </div>
+      )}
+      
+      <div className="flex gap-4 mt-4 text-[10px] text-slate-500 uppercase font-bold">
+        {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
+          <div key={cat} className="flex items-center gap-1">
+            <div className={`w-2 h-2 rounded-sm ${color}`}></div> {cat}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -918,6 +793,20 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
   const goalPercent = Math.round((selfTrainingMins / goalMins) * 100);
   const goalAchieved = selfTrainingMins >= goalMins;
 
+  // Active Weeks Calculation for All-Time Avg
+  const uniqueWeeks = new Set(logs.map(l => {
+    const d = new Date(l.date);
+    // Rough week identifier: Year-WeekNum could be better, but simplified:
+    // Just count unique Mondays
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    return monday.toDateString();
+  }));
+  const activeWeeksCount = uniqueWeeks.size || 1;
+  const allTimeTotalMins = logs.reduce((acc, l) => acc + l.duration, 0);
+  const averageWeeklyHours = (allTimeTotalMins / 60 / activeWeeksCount).toFixed(1);
+
   const byCategory = filteredLogs.reduce((acc, log) => {
     acc[log.category] = (acc[log.category] || 0) + (log.duration / 60);
     return acc;
@@ -931,7 +820,18 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
       chartData[dayIndex] += log.duration;
     });
   }
-  const maxDailyDuration = Math.max(...chartData, 60);
+  
+  // Chart Scaling & Goal Line
+  // Goal Line: (Weekly Goal / 7) mins
+  const dailyGoalMins = (weeklyGoal / 7) * 60;
+  
+  // Ensure chart scales to accommodate either the highest logged day OR the daily goal (whichever is higher), plus buffer
+  const maxDailyDuration = Math.max(...chartData, dailyGoalMins, 60);
+  
+  // Correct percentage calculation for the line position relative to the max height of the chart
+  const goalLinePct = (dailyGoalMins / maxDailyDuration) * 100;
+  
+  const maxHours = Math.ceil(maxDailyDuration / 60);
   const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   return (
@@ -966,20 +866,36 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Total Hours</div>
           <div className="text-3xl font-bold text-white tracking-tight">{totalHours}h</div>
         </Card>
+        
+        {/* Conditional Goal Progress Card */}
         <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={40} /></div>
-          <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Goal Progress</div>
-          <div className="text-3xl font-bold text-white tracking-tight">{goalPercent}%</div>
-          <div className="text-[10px] text-lime-400 uppercase mt-1 flex items-center gap-1">Target: {weeklyGoal}h <Pencil size={8} /></div>
+          <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+            {viewType === 'weekly' ? 'Goal Progress' : 'Avg Weekly'}
+          </div>
+          <div className="text-3xl font-bold text-white tracking-tight">
+            {viewType === 'weekly' ? `${goalPercent}%` : `${averageWeeklyHours}h`}
+          </div>
+          <div className="text-[10px] text-lime-400 uppercase mt-1 flex items-center gap-1">
+            Target: {weeklyGoal}h <Pencil size={8} />
+          </div>
         </Card>
-        <Card className={`relative overflow-hidden group transition-colors ${goalAchieved ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
+
+        <Card className={`relative overflow-hidden group transition-colors ${goalAchieved && viewType === 'weekly' ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Trophy size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Goal Achieved?</div>
-          <div className={`text-3xl font-bold tracking-tight ${goalAchieved ? 'text-lime-400' : 'text-slate-500'}`}>{goalAchieved ? 'YES' : 'NO'}</div>
+          <div className={`text-3xl font-bold tracking-tight ${goalAchieved && viewType === 'weekly' ? 'text-lime-400' : 'text-slate-500'}`}>
+            {viewType === 'weekly' ? (goalAchieved ? 'YES' : 'NO') : 'N/A'}
+          </div>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 ${viewType === 'all' ? 'md:grid-cols-1' : 'md:grid-cols-2'} gap-6`}>
+        {/* Heatmap takes full width in All view */}
+        {viewType === 'all' && (
+          <CalendarHeatmap logs={logs} />
+        )}
+
         <Card>
           <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><Clock size={14} className="text-lime-400" /> Category Split</h3>
           <div className="space-y-5">
@@ -991,28 +907,46 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData }) => {
                   <span className="text-lime-400">{hours.toFixed(1)}h</span>
                 </div>
                 <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-lime-500 to-lime-300 rounded-full" style={{ width: `${(hours / Math.max(parseFloat(totalHours), 0.1)) * 100}%` }}></div>
+                  <div className={`h-full rounded-full ${CATEGORY_COLORS[cat]}`} style={{ width: `${(hours / Math.max(parseFloat(totalHours), 0.1)) * 100}%` }}></div>
                 </div>
               </div>
             ))}
           </div>
         </Card>
+
         {viewType === 'weekly' && (
           <Card>
             <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Weekly Activity</h3>
-            <div className="flex items-end justify-between h-32 pt-4 px-2 gap-2">
-               {WEEK_DAYS.map((day, i) => {
-                 const heightPct = (chartData[i] / maxDailyDuration) * 100;
-                 const isToday = weekOffset === 0 && (new Date().getDay() + 6) % 7 === i;
-                 return (
-                   <div key={day} className="flex flex-1 flex-col items-center gap-2 h-full justify-end group">
-                     <div className="w-full bg-slate-800 rounded-sm flex items-end relative overflow-hidden h-full">
-                       <div className={`w-full transition-all duration-700 ease-out shadow-[0_0_15px_rgba(163,230,53,0.2)] ${heightPct > 0 ? 'bg-lime-500/80 group-hover:bg-lime-400' : 'bg-transparent'}`} style={{ height: `${Math.max(heightPct, 0)}%` }}></div>
+            <div className="relative h-32 mt-4">
+              {/* Daily Average Goal Line */}
+              <div 
+                className="absolute w-full border-t border-dashed border-lime-400/50 z-10 pointer-events-none"
+                style={{ bottom: `${goalLinePct}%` }}
+              >
+                <span className="absolute -top-3 right-0 text-[8px] text-lime-400 font-bold bg-slate-900 px-1">Daily Goal ({(dailyGoalMins/60).toFixed(1)}h)</span>
+              </div>
+
+              <div className="flex items-end justify-between h-full pt-4 px-6 gap-2 relative">
+                 {/* Y-Axis Labels */}
+                 <div className="absolute left-0 top-0 bottom-6 w-4 flex flex-col justify-between text-[8px] text-slate-600 font-mono">
+                   <span>{maxHours}h</span>
+                   <span>{maxHours/2}h</span>
+                   <span>0h</span>
+                 </div>
+
+                 {WEEK_DAYS.map((day, i) => {
+                   const heightPct = (chartData[i] / maxDailyDuration) * 100;
+                   const isToday = weekOffset === 0 && (new Date().getDay() + 6) % 7 === i;
+                   return (
+                     <div key={day} className="flex flex-1 flex-col items-center gap-2 h-full justify-end group z-0">
+                       <div className="w-full bg-slate-800 rounded-sm flex items-end relative overflow-hidden h-full">
+                         <div className={`w-full transition-all duration-700 ease-out shadow-[0_0_15px_rgba(163,230,53,0.2)] ${heightPct > 0 ? 'bg-lime-500/80 group-hover:bg-lime-400' : 'bg-transparent'}`} style={{ height: `${Math.max(heightPct, 0)}%` }}></div>
+                       </div>
+                       <span className={`text-[10px] font-bold uppercase ${isToday ? 'text-lime-400' : 'text-slate-500'}`}>{day}</span>
                      </div>
-                     <span className={`text-[10px] font-bold uppercase ${isToday ? 'text-lime-400' : 'text-slate-500'}`}>{day}</span>
-                   </div>
-                 );
-               })}
+                   );
+                 })}
+              </div>
             </div>
           </Card>
         )}
@@ -1060,7 +994,7 @@ export default function App() {
   useEffect(() => {
     if (user && db) {
       // Online Mode
-      const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'logs'));
+      const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         // Fix: Ensure Firestore ID takes priority over any id stored in data
         const fetchedLogs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -1083,7 +1017,7 @@ export default function App() {
   // Fetch Drills
   useEffect(() => {
     if (user && db) {
-      const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'drills'));
+      const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'drills'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
           // Fix: Ensure Firestore ID takes priority
@@ -1101,7 +1035,7 @@ export default function App() {
     const history = generateHistoricalData();
     if (user && db) {
       if (confirm("This will upload Weeks 1-4 history to the database. Continue?")) {
-        const logsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'logs');
+        const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
         try {
           for (const log of history) {
             // Remove local ID before sending to DB to avoid confusion
@@ -1135,7 +1069,7 @@ export default function App() {
     if (user && db) {
       // Remove ID before saving to let Firestore handle it
       const { id, ...drillData } = drill;
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'drills'), drillData);
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'drills'), drillData);
     } else {
       const updated = [...drills, drill];
       setDrills(updated);
@@ -1146,7 +1080,7 @@ export default function App() {
   const handleUpdateDrill = async (updatedDrill) => {
     if (user && db) {
       const { id, ...drillData } = updatedDrill;
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'drills', id), drillData);
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'drills', id), drillData);
     } else {
       const updated = drills.map(d => d.id === updatedDrill.id ? updatedDrill : d);
       setDrills(updated);
@@ -1156,7 +1090,7 @@ export default function App() {
 
   const handleDeleteDrill = async (id) => {
     if (user && db) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'drills', id));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'drills', id));
     } else {
       const updated = drills.filter(d => d.id !== id);
       setDrills(updated);
@@ -1166,7 +1100,7 @@ export default function App() {
 
   const saveLog = async (newLog) => {
     if (user && db) {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'logs'), newLog);
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), newLog);
     } else {
       const updatedLogs = [...logs, { ...newLog, id: Date.now().toString() }];
       setLogs(updatedLogs);
@@ -1240,7 +1174,7 @@ export default function App() {
 
   const handleDeleteLog = async (id) => {
     if (user && db) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', id));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', id));
     } else {
       const updatedLogs = logs.filter(log => log.id !== id);
       setLogs(updatedLogs);
@@ -1250,8 +1184,7 @@ export default function App() {
 
   const handleUpdateLog = async (updatedLog) => {
     if (user && db) {
-      const { id, ...logData } = updatedLog;
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', id), logData);
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', updatedLog.id), updatedLog);
     } else {
       const updatedLogs = logs.map(log => log.id === updatedLog.id ? updatedLog : log);
       setLogs(updatedLogs);
