@@ -335,6 +335,9 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const [isActive, setIsActive] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cumulativeTime, setCumulativeTime] = useState(0);
+  
+  // Use a Ref to hold the AudioContext to prevent leaks (browsers limit contexts to ~6)
+  const audioCtxRef = useRef(null);
 
   const currentDrill = queue[currentIndex];
   const nextDrill = queue[currentIndex + 1];
@@ -342,6 +345,16 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const totalRemaining = queue.slice(currentIndex + 1).reduce((acc, d) => acc + (d.defaultTime * 60), 0) 
                          + timeLeft 
                          + ((queue.length - 1 - currentIndex) * restDuration);
+
+  // Cleanup Audio Context on unmount
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let interval = null;
@@ -356,7 +369,7 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   }, [isActive, timeLeft]);
 
   const handlePhaseComplete = () => {
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
+    // Attempt beep
     playBeep(isResting ? 880 : 440);
 
     if (!isResting) {
@@ -386,7 +399,17 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const playBeep = (freq = 440) => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioContext();
+      // Initialize Context if null (Lazy load to respect browser autoplay policies)
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext();
+      }
+      
+      const ctx = audioCtxRef.current;
+      // Resume if suspended (common browser requirement)
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -395,7 +418,9 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
       osc.start();
       gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.5);
       osc.stop(ctx.currentTime + 0.5);
-    } catch(e) {}
+    } catch(e) {
+      console.error("Audio beep failed", e);
+    }
   };
 
   const formatTime = (seconds) => {
@@ -707,7 +732,17 @@ const Timer = ({ drill, onComplete, onCancel }) => {
   const [isActive, setIsActive] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const containerRef = useRef(null);
+  const audioCtxRef = useRef(null);
+
+  // Clean up audio context
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let interval = null;
@@ -726,7 +761,12 @@ const Timer = ({ drill, onComplete, onCancel }) => {
   const playAlarm = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      const ctx = new AudioContext();
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -763,7 +803,6 @@ const Timer = ({ drill, onComplete, onCancel }) => {
 
   return (
     <div 
-      ref={containerRef} 
       className={`flex flex-col items-center justify-center p-8 transition-all duration-500 ${
         isFullscreen ? 'fixed inset-0 z-50 bg-black' : 'min-h-[600px] bg-transparent'
       }`}
@@ -1023,7 +1062,8 @@ export default function App() {
       // Online Mode
       const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'logs'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const fetchedLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Fix: Ensure Firestore ID takes priority over any id stored in data
+        const fetchedLogs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
         setLogs(fetchedLogs);
       }, (error) => console.error("Error fetching logs:", error));
       return () => unsubscribe();
@@ -1046,7 +1086,8 @@ export default function App() {
       const q = query(collection(db, 'artifacts', appId, 'users', user.uid, 'drills'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         if (!snapshot.empty) {
-          setDrills(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          // Fix: Ensure Firestore ID takes priority
+          setDrills(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         }
       }, (error) => console.error("Error fetching drills:", error));
       return () => unsubscribe();
@@ -1063,7 +1104,9 @@ export default function App() {
         const logsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'logs');
         try {
           for (const log of history) {
-            await addDoc(logsRef, log);
+            // Remove local ID before sending to DB to avoid confusion
+            const { id, ...logData } = log;
+            await addDoc(logsRef, logData);
           }
           alert("Database seeded successfully!");
         } catch (e) {
@@ -1090,7 +1133,9 @@ export default function App() {
 
   const handleAddDrill = async (drill) => {
     if (user && db) {
-      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'drills'), drill);
+      // Remove ID before saving to let Firestore handle it
+      const { id, ...drillData } = drill;
+      await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'drills'), drillData);
     } else {
       const updated = [...drills, drill];
       setDrills(updated);
@@ -1100,7 +1145,8 @@ export default function App() {
 
   const handleUpdateDrill = async (updatedDrill) => {
     if (user && db) {
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'drills', updatedDrill.id), updatedDrill);
+      const { id, ...drillData } = updatedDrill;
+      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'drills', id), drillData);
     } else {
       const updated = drills.map(d => d.id === updatedDrill.id ? updatedDrill : d);
       setDrills(updated);
@@ -1204,7 +1250,8 @@ export default function App() {
 
   const handleUpdateLog = async (updatedLog) => {
     if (user && db) {
-      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', updatedLog.id), updatedLog);
+      const { id, ...logData } = updatedLog;
+      await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'logs', id), logData);
     } else {
       const updatedLogs = logs.map(log => log.id === updatedLog.id ? updatedLog : log);
       setLogs(updatedLogs);
@@ -1265,9 +1312,11 @@ export default function App() {
             <section><DailyHistory logs={logs} onUpdateLog={handleUpdateLog} onDeleteLog={handleDeleteLog} /></section>
             
             <div className={`mt-8 p-4 border text-xs rounded-xl flex items-center gap-3 transition-colors bg-slate-900/50 border-white/5 text-slate-400`}>
-              <div><Save size={16} /></div>
+              <div className={!user ? 'animate-pulse' : ''}>
+                {!user ? <Loader2 size={16} /> : <Cloud size={16} className="text-lime-400" />}
+              </div>
               <div className="flex-1">
-                <span><strong className="text-slate-300 uppercase tracking-wide">Ready:</strong> Data saved locally. (Offline Mode)</span>
+                {!user ? <span>Connecting to Database...</span> : <span><strong className="text-lime-400 uppercase tracking-wide">Online:</strong> Database Connected.</span>}
               </div>
             </div>
           </div>
