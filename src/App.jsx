@@ -38,19 +38,13 @@ const generateHistoricalData = () => {
   // Helper: Create date relative to "Week 5" (Current Week)
   // weekOffset: 0 = Current (Week 5), 1 = Last Week (Week 4), etc.
   const createDate = (weekOffset, dayIndex) => {
-    const d = new Date(); // Uses system time
+    const d = new Date(); 
     const currentDay = d.getDay(); 
-    // Calculate distance to this week's Monday (if Sun(0), go back 6 days)
     const diffToMon = d.getDate() - currentDay + (currentDay === 0 ? -6 : 1);
     const monday = new Date(d.setDate(diffToMon));
     monday.setHours(12, 0, 0, 0); 
-    
-    // Go back 'weekOffset' weeks
     monday.setDate(monday.getDate() - (weekOffset * 7));
-    
-    // Go forward to specific day (0=Mon, 6=Sun)
     monday.setDate(monday.getDate() + dayIndex);
-    
     return monday.toISOString();
   };
 
@@ -572,6 +566,153 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   );
 };
 
+// --- DrillSelector Component ---
+const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDeleteDrill, onAddDrill, onStartRunthrough }) => {
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingDrill, setEditingDrill] = useState(null);
+  const [manualEntryDrill, setManualEntryDrill] = useState(null);
+  const [newDrill, setNewDrill] = useState({ name: '', defaultTime: 15, category: 'Self Training' });
+
+  const handleAdd = () => {
+    if (newDrill.name) {
+      onAddDrill({ ...newDrill, id: Date.now() });
+      setNewDrill({ name: '', defaultTime: 15, category: 'Self Training' });
+      setIsAdding(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {editingDrill && (
+        <EditDrillModal 
+          drill={editingDrill} 
+          onSave={onUpdateDrill}
+          onDelete={onDeleteDrill}
+          onClose={() => setEditingDrill(null)} 
+        />
+      )}
+
+      {manualEntryDrill && (
+        <ManualEntryModal
+          title={`Log ${manualEntryDrill.name}`}
+          initialDuration={manualEntryDrill.defaultTime}
+          onSave={(duration) => onManualLog(manualEntryDrill, duration)}
+          onClose={() => setManualEntryDrill(null)}
+        />
+      )}
+
+      <div className="flex justify-between items-center gap-4">
+        <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2">
+          <Activity className="text-lime-400" /> Select Drill
+        </h2>
+        <div className="flex gap-2">
+          <Button variant="secondary" className="px-3" onClick={onStartRunthrough}>
+            <Layers size={18} /> <span className="hidden md:inline">Runthrough</span>
+          </Button>
+          <Button variant="secondary" className="px-3" onClick={() => setIsAdding(!isAdding)}>
+            <Plus size={18} /> <span className="hidden md:inline">New</span>
+          </Button>
+        </div>
+      </div>
+
+      {isAdding && (
+        <Card className="bg-lime-400/5 border-lime-400/20 mb-4 animate-in fade-in slide-in-from-top-4">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-lime-400 uppercase mb-2">New Drill Name</label>
+              <input 
+                type="text" 
+                value={newDrill.name}
+                onChange={(e) => setNewDrill({...newDrill, name: e.target.value})}
+                className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all placeholder:text-slate-600"
+                placeholder="e.g. Penalty Kicks"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Duration (mins)</label>
+                <input 
+                  type="number" 
+                  value={newDrill.defaultTime}
+                  onChange={(e) => setNewDrill({...newDrill, defaultTime: parseInt(e.target.value)})}
+                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Category</label>
+                <select 
+                  value={newDrill.category}
+                  onChange={(e) => setNewDrill({...newDrill, category: e.target.value})}
+                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all appearance-none"
+                >
+                  {CATEGORIES.map(cat => (
+                    <option key={cat} value={cat} className="bg-slate-900">{cat}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="ghost" onClick={() => setIsAdding(false)}>Cancel</Button>
+              <Button onClick={handleAdd}>Confirm</Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {drills.map(drill => (
+          <div 
+            key={drill.id} 
+            className="group relative bg-slate-900/60 backdrop-blur-md border border-white/5 p-5 rounded-2xl hover:border-lime-400/30 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+          >
+            {/* Hover Glow Effect */}
+            <div className="absolute inset-0 bg-gradient-to-br from-lime-400/0 via-lime-400/0 to-lime-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+            
+            {/* Header: Name & Info */}
+            <div className="relative z-10 mb-6">
+               <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="font-bold text-lg text-white group-hover:text-lime-400 transition-colors uppercase tracking-wide truncate max-w-[150px]">{drill.name}</h3>
+                  <span className="text-[10px] font-bold text-slate-400 bg-white/5 border border-white/5 px-2 py-1 rounded uppercase tracking-wider mt-2 inline-block">
+                    {drill.category}
+                  </span>
+                </div>
+                 <button 
+                  onClick={() => setEditingDrill(drill)}
+                  className="text-slate-600 hover:text-white transition-colors"
+                >
+                  <Pencil size={14} />
+                </button>
+              </div>
+              
+              <div className="text-center mt-4 mb-2">
+                <span className="text-5xl font-bold text-white/90 font-mono tracking-tighter">{drill.defaultTime}</span>
+                <span className="text-[10px] text-slate-500 font-bold uppercase block -mt-1">MINUTES</span>
+              </div>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-3 relative z-10">
+              <button 
+                onClick={() => onSelectDrill(drill)}
+                className="bg-lime-400 hover:bg-lime-300 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95"
+              >
+                <Play size={18} fill="currentColor" /> TIMER
+              </button>
+              <button 
+                onClick={() => setManualEntryDrill(drill)}
+                className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 border border-white/5"
+              >
+                <ClipboardList size={18} /> LOG
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // --- DailyHistory Component ---
 const DailyHistory = ({ logs, onUpdateLog, onDeleteLog }) => {
   const [editingLog, setEditingLog] = useState(null);
@@ -794,153 +935,6 @@ const Timer = ({ drill, onComplete, onCancel }) => {
             </Button>
           </div>
         )}
-      </div>
-    </div>
-  );
-};
-
-// --- DrillSelector Component ---
-const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDeleteDrill, onAddDrill, onStartRunthrough }) => {
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingDrill, setEditingDrill] = useState(null);
-  const [manualEntryDrill, setManualEntryDrill] = useState(null);
-  const [newDrill, setNewDrill] = useState({ name: '', defaultTime: 15, category: 'Self Training' });
-
-  const handleAdd = () => {
-    if (newDrill.name) {
-      onAddDrill({ ...newDrill, id: Date.now() });
-      setNewDrill({ name: '', defaultTime: 15, category: 'Self Training' });
-      setIsAdding(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      {editingDrill && (
-        <EditDrillModal 
-          drill={editingDrill} 
-          onSave={onUpdateDrill}
-          onDelete={onDeleteDrill}
-          onClose={() => setEditingDrill(null)} 
-        />
-      )}
-
-      {manualEntryDrill && (
-        <ManualEntryModal
-          title={`Log ${manualEntryDrill.name}`}
-          initialDuration={manualEntryDrill.defaultTime}
-          onSave={(duration) => onManualLog(manualEntryDrill, duration)}
-          onClose={() => setManualEntryDrill(null)}
-        />
-      )}
-
-      <div className="flex justify-between items-center gap-4">
-        <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2">
-          <Activity className="text-lime-400" /> Select Drill
-        </h2>
-        <div className="flex gap-2">
-          <Button variant="secondary" className="px-3" onClick={onStartRunthrough}>
-            <Layers size={18} /> <span className="hidden md:inline">Runthrough</span>
-          </Button>
-          <Button variant="secondary" className="px-3" onClick={() => setIsAdding(!isAdding)}>
-            <Plus size={18} /> <span className="hidden md:inline">New</span>
-          </Button>
-        </div>
-      </div>
-
-      {isAdding && (
-        <Card className="bg-lime-400/5 border-lime-400/20 mb-4 animate-in fade-in slide-in-from-top-4">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-lime-400 uppercase mb-2">New Drill Name</label>
-              <input 
-                type="text" 
-                value={newDrill.name}
-                onChange={(e) => setNewDrill({...newDrill, name: e.target.value})}
-                className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all placeholder:text-slate-600"
-                placeholder="e.g. Penalty Kicks"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Duration (mins)</label>
-                <input 
-                  type="number" 
-                  value={newDrill.defaultTime}
-                  onChange={(e) => setNewDrill({...newDrill, defaultTime: parseInt(e.target.value)})}
-                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Category</label>
-                <select 
-                  value={newDrill.category}
-                  onChange={(e) => setNewDrill({...newDrill, category: e.target.value})}
-                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all appearance-none"
-                >
-                  {CATEGORIES.map(cat => (
-                    <option key={cat} value={cat} className="bg-slate-900">{cat}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setIsAdding(false)}>Cancel</Button>
-              <Button onClick={handleAdd}>Confirm</Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {drills.map(drill => (
-          <div 
-            key={drill.id} 
-            className="group relative bg-slate-900/60 backdrop-blur-md border border-white/5 p-5 rounded-2xl hover:border-lime-400/30 transition-all duration-300 flex flex-col justify-between overflow-hidden"
-          >
-            {/* Hover Glow Effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-lime-400/0 via-lime-400/0 to-lime-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-            
-            {/* Header: Name & Info */}
-            <div className="relative z-10 mb-6">
-               <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-lg text-white group-hover:text-lime-400 transition-colors uppercase tracking-wide truncate max-w-[150px]">{drill.name}</h3>
-                  <span className="text-[10px] font-bold text-slate-400 bg-white/5 border border-white/5 px-2 py-1 rounded uppercase tracking-wider mt-2 inline-block">
-                    {drill.category}
-                  </span>
-                </div>
-                 <button 
-                  onClick={() => setEditingDrill(drill)}
-                  className="text-slate-600 hover:text-white transition-colors"
-                >
-                  <Pencil size={14} />
-                </button>
-              </div>
-              
-              <div className="text-center mt-4 mb-2">
-                <span className="text-5xl font-bold text-white/90 font-mono tracking-tighter">{drill.defaultTime}</span>
-                <span className="text-[10px] text-slate-500 font-bold uppercase block -mt-1">MINUTES</span>
-              </div>
-            </div>
-            
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-3 relative z-10">
-              <button 
-                onClick={() => onSelectDrill(drill)}
-                className="bg-lime-400 hover:bg-lime-300 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95"
-              >
-                <Play size={18} fill="currentColor" /> TIMER
-              </button>
-              <button 
-                onClick={() => setManualEntryDrill(drill)}
-                className="bg-white/10 hover:bg-white/20 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 border border-white/5"
-              >
-                <ClipboardList size={18} /> LOG
-              </button>
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -1185,6 +1179,8 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData, onSyncLoc
   // Active Weeks Calculation for All-Time Avg
   const uniqueWeeks = new Set(logs.map(l => {
     const d = new Date(l.date);
+    // Rough week identifier: Year-WeekNum could be better, but simplified:
+    // Just count unique Mondays
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(d.setDate(diff));
@@ -1331,15 +1327,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData, onSyncLoc
           </Card>
         )}
       </div>
-
-      <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-center gap-4">
-         <Button variant="secondary" onClick={onSeedData} className="w-full md:w-auto">
-           <RefreshCcw size={16} /> Reset Local Data
-         </Button>
-         <Button variant="primary" onClick={onSyncLocal} className="w-full md:w-auto">
-           <Cloud size={16} /> Sync Local to Cloud
-         </Button>
-      </div>
     </div>
   );
 };
@@ -1358,23 +1345,26 @@ export default function App() {
   const [runthroughRest, setRunthroughRest] = useState(30);
 
   useEffect(() => {
+    const initAuth = async () => {
+      // Create user session immediately, even if offline, to generate UID for local structure consistency if needed later
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    
+    // Only attempt auth if Firebase initialized successfully
     if (auth) {
-      const initAuth = async () => {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      };
       initAuth();
       const unsubscribe = onAuthStateChanged(auth, setUser);
       return () => unsubscribe();
     }
   }, []);
 
-  // Fetch Logs (or load local)
   useEffect(() => {
     if (user && db) {
+      // Online: Sync from Cloud
       const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const fetchedLogs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -1382,6 +1372,7 @@ export default function App() {
       }, (error) => console.error("Error fetching logs:", error));
       return () => unsubscribe();
     } else {
+      // Offline: Load from Local Storage
       const savedLogs = localStorage.getItem('soccer_logs_v6_local');
       if (savedLogs) {
         setLogs(JSON.parse(savedLogs));
@@ -1391,6 +1382,34 @@ export default function App() {
         localStorage.setItem('soccer_logs_v6_local', JSON.stringify(historicalData));
       }
     }
+  }, [user]);
+
+  // Window helper for manual sync
+  useEffect(() => {
+    if (!db || !user) return;
+    
+    window.uploadLocalData = async () => {
+      const savedLogs = localStorage.getItem('soccer_logs_v6_local');
+      if (!savedLogs) return console.log("No local data found.");
+      
+      const localData = JSON.parse(savedLogs);
+      console.log(`Starting upload of ${localData.length} records...`);
+      
+      let count = 0;
+      for (const log of localData) {
+        try {
+          const { id, ...logData } = log; // Strip ID to let Firestore generate/manage
+          // Using addDoc to just push everything. If you want to avoid duplicates you'd need to check existence or use setDoc with a deterministic ID.
+          // For a one-time migration, addDoc is simplest.
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
+          count++;
+          console.log(`Uploaded ${count}/${localData.length}`);
+        } catch (e) {
+          console.error("Upload failed", e);
+        }
+      }
+      alert(`Upload Complete: ${count} records sent to cloud.`);
+    };
   }, [user]);
 
   // Fetch Drills
@@ -1415,35 +1434,6 @@ export default function App() {
       setLogs(history);
       localStorage.setItem('soccer_logs_v6_local', JSON.stringify(history));
       alert("Local data reset successfully!");
-    }
-  };
-
-  const handleSyncLocal = async () => {
-    if (!user || !db) return alert("Database not connected. Check environment variables.");
-    
-    const savedLogs = localStorage.getItem('soccer_logs_v6_local');
-    if (!savedLogs) return alert("No local data found.");
-    
-    if (confirm("Upload all local records to the database? This might create duplicates if already synced.")) {
-      const localData = JSON.parse(savedLogs);
-      let count = 0;
-      try {
-        for (const log of localData) {
-           if (log.id && log.id.startsWith('seed')) {
-              // For seeded data, use the ID to prevent dupes
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', log.id), log);
-           } else {
-             // For user created data, let firestore generate ID or use existing if compatible
-             const { id, ...logData } = log;
-             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
-           }
-           count++;
-        }
-        alert(`Synced ${count} records to Cloud.`);
-      } catch(e) {
-        console.error(e);
-        alert("Error syncing data.");
-      }
     }
   };
 
@@ -1618,7 +1608,7 @@ export default function App() {
 
         {view === 'runthrough_setup' && <RunthroughSetupModal drills={drills} onStart={handleStartRunthrough} onClose={() => setView('drills')} />}
         {view === 'runthrough_active' && <RunthroughTimer queue={runthroughQueue} restDuration={runthroughRest} onCompleteLog={handleRunthroughLog} onExit={() => setView('drills')} />}
-        {view === 'stats' && <StatsDashboard logs={logs} weeklyGoal={weeklyGoal} setWeeklyGoal={handleSetGoal} onSeedData={handleSeedData} onSyncLocal={handleSyncLocal} />}
+        {view === 'stats' && <StatsDashboard logs={logs} weeklyGoal={weeklyGoal} setWeeklyGoal={handleSetGoal} onSeedData={handleSeedData} />}
 
         {view === 'activities' && (
           <div className="space-y-8 animate-in fade-in duration-500">
