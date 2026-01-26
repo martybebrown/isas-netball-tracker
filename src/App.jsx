@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Plus, Trash2, BarChart2, CheckCircle, Clock, Save, Maximize, Minimize, Settings, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trophy, Activity, Cloud, Loader2, AlertCircle, Calendar, Target, ClipboardList, History, Dumbbell, Layers, FastForward, GripVertical, RefreshCcw, Database, Info, LayoutGrid, List } from 'lucide-react';
+import { Play, Pause, Square, Plus, Trash2, BarChart2, CheckCircle, Clock, Save, Maximize, Minimize, Settings, X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trophy, Activity, Cloud, Loader2, AlertCircle, Calendar, Target, ClipboardList, History, Dumbbell, Layers, FastForward, GripVertical, RefreshCcw, Database, Info, LayoutGrid, List, FileText } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, setDoc, writeBatch } from 'firebase/firestore';
 
 // --- Constants & Config ---
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -49,8 +49,10 @@ const generateHistoricalData = () => {
   };
 
   const addLog = (weekOffset, dayIndex, category, hours, name) => {
+    // Deterministic ID to prevent duplicates on re-seeding
+    const safeName = (name || category).replace(/[^a-zA-Z0-9]/g, '');
     logs.push({
-      id: `seed-w${weekOffset}-d${dayIndex}-${Math.random().toString(36).substr(2,9)}`,
+      id: `seed-w${weekOffset}-d${dayIndex}-${safeName}`,
       date: createDate(weekOffset, dayIndex),
       drillName: name || category,
       category: category,
@@ -117,8 +119,6 @@ try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
-  } else {
-    // console.warn("Firebase Config not found. App will run in Offline Mode.");
   }
 } catch (error) {
   console.error("Firebase init failed:", error);
@@ -175,6 +175,76 @@ const ManualEntryModal = ({ title, initialDuration, onSave, onClose }) => {
     </div>
   );
 };
+
+const FullHistoryModal = ({ logs, onUpdateLog, onDeleteLog, onClose }) => {
+  const [editingLog, setEditingLog] = useState(null);
+
+  // Sort logs by date desc
+  const sortedLogs = [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-slate-900 border border-white/10 w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+        {editingLog && (
+          <ManualEntryModal 
+            title={`Edit ${editingLog.drillName}`}
+            initialDuration={editingLog.duration}
+            onSave={(newDuration) => {
+              onUpdateLog({...editingLog, duration: newDuration});
+              setEditingLog(null);
+            }}
+            onClose={() => setEditingLog(null)}
+          />
+        )}
+
+        <div className="p-4 border-b border-white/5 flex justify-between items-center bg-slate-800/50">
+          <h3 className="font-bold text-lg text-white uppercase tracking-wide flex items-center gap-2">
+            <History className="text-lime-400" size={20} /> Full History
+          </h3>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/10">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-y-auto space-y-2">
+          {sortedLogs.length === 0 ? (
+            <div className="text-center text-slate-500 py-10 italic">No logs found.</div>
+          ) : (
+            sortedLogs.map(log => (
+              <div key={log.id} className="bg-slate-900 border border-white/5 p-3 rounded-xl flex justify-between items-center group hover:border-lime-400/30 transition-colors">
+                <div className="flex-1">
+                   <div className="flex items-center gap-2 mb-1">
+                     <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">
+                       {new Date(log.date).toLocaleDateString()}
+                     </span>
+                     <span className={`text-[10px] uppercase font-bold ${CATEGORY_TEXT_COLORS[log.category]}`}>{log.category}</span>
+                   </div>
+                   <div className="text-white font-bold text-sm">{log.drillName}</div>
+                   <div className="text-xs text-slate-500">{log.duration} mins</div>
+                </div>
+                
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingLog(log)} className="p-2 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors">
+                    <Pencil size={16} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if(confirm("Are you sure you want to delete this record?")) onDeleteLog(log.id);
+                    }} 
+                    className="p-2 hover:bg-red-500/10 rounded-full text-slate-400 hover:text-red-400 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 const EditGoalModal = ({ currentGoal, onSave, onClose }) => {
   const [goal, setGoal] = useState(currentGoal);
@@ -762,7 +832,7 @@ const DailyHistory = ({ logs, onUpdateLog, onDeleteLog }) => {
 };
 
 // --- ActivitySelector Component ---
-const ActivitySelector = ({ onLogActivity }) => {
+const ActivitySelector = ({ onLogActivity, onViewHistory }) => {
   const activities = [
     { name: "Self Training", icon: Target, color: "text-lime-400", defaultMins: 30 },
     { name: "Training", icon: Dumbbell, color: "text-blue-400", defaultMins: 90 },
@@ -771,19 +841,26 @@ const ActivitySelector = ({ onLogActivity }) => {
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4">
-      {activities.map(act => (
-        <button 
-           key={act.name}
-           onClick={() => onLogActivity(act.name, act.defaultMins)}
-           className="bg-slate-900/60 border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center gap-4 hover:border-lime-400/50 hover:bg-slate-800 transition-all group shadow-lg"
-        >
-           <div className={`p-4 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors`}>
-             <act.icon size={32} className={`${act.color} group-hover:scale-110 transition-transform`} />
-           </div>
-           <span className="font-bold text-sm text-white uppercase tracking-wider">{act.name}</span>
-        </button>
-      ))}
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+      <div className="grid grid-cols-2 gap-4">
+        {activities.map(act => (
+          <button 
+             key={act.name}
+             onClick={() => onLogActivity(act.name, act.defaultMins)}
+             className="bg-slate-900/60 border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center gap-4 hover:border-lime-400/50 hover:bg-slate-800 transition-all group shadow-lg"
+          >
+             <div className={`p-4 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors`}>
+               <act.icon size={32} className={`${act.color} group-hover:scale-110 transition-transform`} />
+             </div>
+             <span className="font-bold text-sm text-white uppercase tracking-wider">{act.name}</span>
+          </button>
+        ))}
+      </div>
+      
+      <Button variant="secondary" onClick={onViewHistory} className="w-full flex justify-between items-center bg-slate-800/50 border-white/5 text-slate-300 hover:text-white">
+        <span className="flex items-center gap-2"><History size={16} /> Manage Full History</span>
+        <ChevronRight size={16} />
+      </Button>
     </div>
   );
 };
@@ -872,7 +949,7 @@ const Timer = ({ drill, onComplete, onCancel }) => {
 
       <div className="absolute top-6 left-6 z-20">
         <button onClick={toggleFullscreen} className="p-3 bg-white/5 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors backdrop-blur-sm">
-          {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
+          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
         </button>
       </div>
       
@@ -1179,8 +1256,6 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData, onSyncLoc
   // Active Weeks Calculation for All-Time Avg
   const uniqueWeeks = new Set(logs.map(l => {
     const d = new Date(l.date);
-    // Rough week identifier: Year-WeekNum could be better, but simplified:
-    // Just count unique Mondays
     const day = d.getDay();
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(d.setDate(diff));
@@ -1330,7 +1405,7 @@ const StatsDashboard = ({ logs, weeklyGoal, setWeeklyGoal, onSeedData, onSyncLoc
 
       <div className="border-t border-white/5 pt-8 flex flex-col md:flex-row justify-center gap-4">
          <Button variant="secondary" onClick={onSeedData} className="w-full md:w-auto">
-           <RefreshCcw size={16} /> Reset Local Data
+           <RefreshCcw size={16} /> Reset Data to History (Clears Duplicates)
          </Button>
          <Button variant="primary" onClick={onSyncLocal} className="w-full md:w-auto">
            <Cloud size={16} /> Sync Local to Cloud
@@ -1352,28 +1427,26 @@ export default function App() {
   const [manualEntryData, setManualEntryData] = useState(null); 
   const [runthroughQueue, setRunthroughQueue] = useState([]);
   const [runthroughRest, setRunthroughRest] = useState(30);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   useEffect(() => {
-    const initAuth = async () => {
-      // Create user session immediately, even if offline, to generate UID for local structure consistency if needed later
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    
-    // Only attempt auth if Firebase initialized successfully
     if (auth) {
+      const initAuth = async () => {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      };
       initAuth();
       const unsubscribe = onAuthStateChanged(auth, setUser);
       return () => unsubscribe();
     }
   }, []);
 
+  // Fetch Logs (or load local)
   useEffect(() => {
     if (user && db) {
-      // Online: Sync from Cloud
       const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'logs'));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const fetchedLogs = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
@@ -1381,7 +1454,6 @@ export default function App() {
       }, (error) => console.error("Error fetching logs:", error));
       return () => unsubscribe();
     } else {
-      // Offline: Load from Local Storage
       const savedLogs = localStorage.getItem('soccer_logs_v6_local');
       if (savedLogs) {
         setLogs(JSON.parse(savedLogs));
@@ -1391,34 +1463,6 @@ export default function App() {
         localStorage.setItem('soccer_logs_v6_local', JSON.stringify(historicalData));
       }
     }
-  }, [user]);
-
-  // Window helper for manual sync
-  useEffect(() => {
-    if (!db || !user) return;
-    
-    window.uploadLocalData = async () => {
-      const savedLogs = localStorage.getItem('soccer_logs_v6_local');
-      if (!savedLogs) return console.log("No local data found.");
-      
-      const localData = JSON.parse(savedLogs);
-      console.log(`Starting upload of ${localData.length} records...`);
-      
-      let count = 0;
-      for (const log of localData) {
-        try {
-          const { id, ...logData } = log; // Strip ID to let Firestore generate/manage
-          // Using addDoc to just push everything. If you want to avoid duplicates you'd need to check existence or use setDoc with a deterministic ID.
-          // For a one-time migration, addDoc is simplest.
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
-          count++;
-          console.log(`Uploaded ${count}/${localData.length}`);
-        } catch (e) {
-          console.error("Upload failed", e);
-        }
-      }
-      alert(`Upload Complete: ${count} records sent to cloud.`);
-    };
   }, [user]);
 
   // Fetch Drills
@@ -1437,9 +1481,34 @@ export default function App() {
     }
   }, [user]);
 
-  const handleSeedData = () => {
-    if (confirm("Reset local data to spreadsheet history (Weeks 1-4)? This will overwrite local changes.")) {
-      const history = generateHistoricalData();
+  const handleSeedData = async () => {
+    const history = generateHistoricalData();
+    if (user && db) {
+      if (confirm("This will DELETE ALL EXISTING LOGS and reset to the clean historical data (Weeks 1-4). Are you sure?")) {
+        const logsRef = collection(db, 'artifacts', appId, 'public', 'data', 'logs');
+        try {
+          // 1. Delete all existing logs
+          // Note: In client SDK, we must iterate to delete. For massive collections this is slow, but fine here.
+          const existingLogs = logs.map(l => l.id);
+          const batchSize = 500; 
+          // Simple iteration for now as batching logic adds complexity
+          for (const logId of existingLogs) {
+             await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', logId));
+          }
+
+          // 2. Add clean history
+          for (const log of history) {
+            const { id, ...logData } = log;
+            // Use setDoc with the deterministic ID from history to prevent future dupes
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', log.id), logData);
+          }
+          alert("Database reset and seeded successfully!");
+        } catch (e) {
+          console.error(e);
+          alert("Failed to reset database.");
+        }
+      }
+    } else {
       setLogs(history);
       localStorage.setItem('soccer_logs_v6_local', JSON.stringify(history));
       alert("Local data reset successfully!");
@@ -1452,18 +1521,22 @@ export default function App() {
     const savedLogs = localStorage.getItem('soccer_logs_v6_local');
     if (!savedLogs) return alert("No local data found.");
     
-    if (confirm("Upload all local records to the database? This might create duplicates if already synced.")) {
+    if (confirm("Upload all local records to the database?")) {
       const localData = JSON.parse(savedLogs);
       let count = 0;
       try {
         for (const log of localData) {
            if (log.id && log.id.startsWith('seed')) {
-              // For seeded data, use the ID to prevent dupes
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', log.id), log);
+              const { id, ...logData } = log;
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', log.id), logData);
            } else {
-             // For user created data, let firestore generate ID or use existing if compatible
              const { id, ...logData } = log;
-             await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
+             // Use createdAt as ID if available for consistency, or let firestore generate
+             if(log.createdAt) {
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', `log-${log.createdAt}`), logData);
+             } else {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'logs'), logData);
+             }
            }
            count++;
         }
@@ -1603,7 +1676,8 @@ export default function App() {
 
   const handleUpdateLog = async (updatedLog) => {
     if (user && db) {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', updatedLog.id), updatedLog);
+      const { id, ...logData } = updatedLog;
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'logs', id), logData);
     } else {
       const updatedLogs = logs.map(log => log.id === updatedLog.id ? updatedLog : log);
       setLogs(updatedLogs);
@@ -1643,6 +1717,15 @@ export default function App() {
             onClose={() => setManualEntryData(null)}
           />
         )}
+        
+        {showHistoryModal && (
+          <FullHistoryModal 
+            logs={logs}
+            onUpdateLog={handleUpdateLog}
+            onDeleteLog={handleDeleteLog}
+            onClose={() => setShowHistoryModal(false)}
+          />
+        )}
 
         {view === 'runthrough_setup' && <RunthroughSetupModal drills={drills} onStart={handleStartRunthrough} onClose={() => setView('drills')} />}
         {view === 'runthrough_active' && <RunthroughTimer queue={runthroughQueue} restDuration={runthroughRest} onCompleteLog={handleRunthroughLog} onExit={() => setView('drills')} />}
@@ -1652,7 +1735,7 @@ export default function App() {
           <div className="space-y-8 animate-in fade-in duration-500">
             <section>
               <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2 mb-6"><Target className="text-lime-400" /> Log Activity</h2>
-              <ActivitySelector onLogActivity={handleActivityLog} />
+              <ActivitySelector onLogActivity={handleActivityLog} onViewHistory={() => setShowHistoryModal(true)} />
             </section>
             <section><DailyHistory logs={logs} onUpdateLog={handleUpdateLog} onDeleteLog={handleDeleteLog} /></section>
           </div>
