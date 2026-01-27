@@ -270,14 +270,14 @@ const AddHistoryEntryModal = ({ onClose, onSave }) => {
             />
           </div>
           <div>
-             <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Category</label>
-             <select 
-               value={category}
-               onChange={(e) => setCategory(e.target.value)}
-               className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:outline-none"
-             >
-               {CATEGORIES.map(cat => <option key={cat}>{cat}</option>)}
-             </select>
+              <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Category</label>
+              <select 
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:outline-none"
+              >
+                {CATEGORIES.map(cat => <option key={cat}>{cat}</option>)}
+              </select>
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Activity Name (Optional)</label>
@@ -418,8 +418,8 @@ const EditGoalModal = ({ currentGoal, currentCategories, onSave, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl p-6">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-slate-900 border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl p-6 relative">
         <h3 className="font-bold text-lg text-white uppercase tracking-wide mb-4">Edit Targets</h3>
         
         <div className="space-y-4 mb-6">
@@ -967,25 +967,76 @@ const CalendarHeatmap = ({ logs }) => {
 // --- Stats Page ---
 
 const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGoalCategories }) => {
-  const [viewType, setViewType] = useState('weekly'); 
-  const [weekOffset, setWeekOffset] = useState(0); 
+  const [viewType, setViewType] = useState('weekly'); // 'weekly', 'monthly', 'term', 'all'
+  const [dateOffset, setDateOffset] = useState(0); 
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [hoverBar, setHoverBar] = useState(null);
 
-  const getWeekRange = (offset) => {
-    const now = new Date();
-    now.setDate(now.getDate() + (offset * 7));
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
-    monday.setHours(0,0,0,0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23,59,59,999);
-    return { start: monday, end: sunday };
+  // Helper to get range and labels based on viewType and offset
+  const getViewRange = (type, offset) => {
+    const d = new Date();
+    d.setHours(0,0,0,0);
+
+    if (type === 'weekly') {
+      d.setDate(d.getDate() + (offset * 7));
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const start = new Date(d.setDate(diff));
+      start.setHours(0,0,0,0);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23,59,59,999);
+      return { start, end, label: `${start.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} - ${end.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}` };
+    } 
+    
+    if (type === 'monthly') {
+      d.setDate(1); // Set to 1st of current month
+      d.setMonth(d.getMonth() + offset);
+      const start = new Date(d.getFullYear(), d.getMonth(), 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      end.setHours(23,59,59,999);
+      return { start, end, label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) };
+    }
+
+    if (type === 'term') {
+      // 13 Weeks blocks from start of year
+      const year = d.getFullYear();
+      const startOfYear = new Date(year, 0, 1);
+      
+      // Calculate current term index (0-3) based on today
+      const diffTime = Math.abs(d - startOfYear);
+      const diffWeeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7)); 
+      const currentTermIndex = Math.floor((diffWeeks - 1) / 13);
+      
+      const targetIndex = currentTermIndex + offset;
+      
+      // Calculate start of that term relative to start of year
+      // To align cleanly, we often want Term 1 to start on the first Monday of the year? 
+      // Let's stick to simple 13-week blocks from Jan 1 for consistency
+      const start = new Date(startOfYear);
+      start.setDate(start.getDate() + (targetIndex * 13 * 7));
+      
+      // Adjust start to be a Monday for clean charts
+      const day = start.getDay();
+      const diffToMon = start.getDate() - day + (day === 0 ? -6 : 1);
+      start.setDate(diffToMon);
+      start.setHours(0,0,0,0);
+
+      const end = new Date(start);
+      end.setDate(start.getDate() + (13 * 7) - 1);
+      end.setHours(23,59,59,999);
+      
+      return { 
+          start: start, 
+          end: end, 
+          label: `Term ${(targetIndex % 4) + 1} (${start.toLocaleDateString('en-US', {month:'short', day:'numeric'})} - ${end.toLocaleDateString('en-US', {month:'short', day:'numeric'})})` 
+      };
+    }
+    
+    return { start: new Date(0), end: new Date() }; // All time fallback
   };
 
-  const currentRange = getWeekRange(weekOffset);
+  const currentRange = getViewRange(viewType, dateOffset);
 
   const filteredLogs = logs.filter(log => {
     if (viewType === 'all') return true;
@@ -1000,8 +1051,14 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
   const selfTrainingHours = (selfTrainingMins / 60).toFixed(1);
   const totalMins = filteredLogs.reduce((acc, l) => acc + l.duration, 0);
   const totalHours = (totalMins / 60).toFixed(1);
-  const goalMins = weeklyGoal * 60;
-  const goalPercent = Math.round((selfTrainingMins / goalMins) * 100);
+
+  // Goal scaling
+  let targetHours = weeklyGoal;
+  if (viewType === 'monthly') targetHours = weeklyGoal * 4.33; // Approx weeks in month
+  if (viewType === 'term') targetHours = weeklyGoal * 13;
+  
+  const goalMins = targetHours * 60;
+  const goalPercent = Math.round((selfTrainingMins / Math.max(goalMins, 1)) * 100);
   const goalAchieved = selfTrainingMins >= goalMins;
 
   // Active Weeks Calculation for All-Time Avg
@@ -1021,33 +1078,58 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
     return acc;
   }, {});
 
-  // Chart Data Structure: Array of objects { total: number, activities: { 'Self Training': number, ... } }
-  const chartData = Array.from({ length: 7 }, () => ({ total: 0, activities: {} }));
-  
+  // --- Dynamic Chart Data Calculation ---
+  let chartBuckets = [];
+  let chartLabels = [];
+  let getKey = () => 0;
+
   if (viewType === 'weekly') {
-    filteredLogs.forEach(log => {
-      const date = new Date(log.date);
-      const dayIndex = (date.getDay() + 6) % 7; 
-      chartData[dayIndex].total += log.duration;
-      if (!chartData[dayIndex].activities[log.category]) {
-         chartData[dayIndex].activities[log.category] = 0;
-      }
-      chartData[dayIndex].activities[log.category] += log.duration;
-    });
+      chartBuckets = Array.from({ length: 7 }, () => ({ total: 0, activities: {} }));
+      chartLabels = WEEK_DAYS;
+      getKey = (date) => (date.getDay() + 6) % 7;
+  } else if (viewType === 'monthly') {
+      // 5 Weeks max
+      chartBuckets = Array.from({ length: 5 }, () => ({ total: 0, activities: {} }));
+      chartLabels = ['W1', 'W2', 'W3', 'W4', 'W5'];
+      // Key based on week index relative to start of month range?
+      // Simple logic: (Date - StartDate) / 7 days
+      getKey = (date) => Math.min(Math.floor((date - currentRange.start) / (1000 * 60 * 60 * 24 * 7)), 4);
+  } else if (viewType === 'term') {
+      // 13 Weeks
+      chartBuckets = Array.from({ length: 13 }, () => ({ total: 0, activities: {} }));
+      chartLabels = Array.from({length: 13}, (_, i) => `W${i+1}`);
+      getKey = (date) => Math.min(Math.floor((date - currentRange.start) / (1000 * 60 * 60 * 24 * 7)), 12);
+  }
+
+  // Populate buckets
+  if (viewType !== 'all') {
+      filteredLogs.forEach(log => {
+        const date = new Date(log.date);
+        const idx = getKey(date);
+        if (chartBuckets[idx]) {
+            chartBuckets[idx].total += log.duration;
+            if (!chartBuckets[idx].activities[log.category]) {
+                chartBuckets[idx].activities[log.category] = 0;
+            }
+            chartBuckets[idx].activities[log.category] += log.duration;
+        }
+      });
   }
   
-  // Chart Scaling & Goal Line
-  const dailyGoalMins = (weeklyGoal / 7) * 60;
-  const maxDataMins = Math.max(...chartData.map(d => d.total));
-  const ceilingMins = Math.max(Math.ceil(Math.max(maxDataMins, dailyGoalMins) / 60) * 60, 60); // At least 1h, round up to hour
-  
-  const goalLinePct = (dailyGoalMins / ceilingMins) * 100;
+  // Chart Scaling
+  const dataMax = chartBuckets.length > 0 ? Math.max(...chartBuckets.map(d => d.total)) : 0;
+  // Use either the weekly goal or daily goal as reference line depending on view
+  let referenceMins = 0;
+  if (viewType === 'weekly') referenceMins = (weeklyGoal / 7) * 60; // Daily avg
+  else referenceMins = weeklyGoal * 60; // Weekly goal for weekly buckets
+
+  const ceilingMins = Math.max(Math.ceil(Math.max(dataMax, referenceMins) / 60) * 60, 60);
+  const goalLinePct = (referenceMins / ceilingMins) * 100;
   const maxHours = Math.ceil(ceilingMins / 60);
   
-  const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300 relative">
+      {/* Modal moved here for better context */}
       {showGoalModal && (
         <EditGoalModal 
            currentGoal={weeklyGoal} 
@@ -1058,18 +1140,27 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
       )}
 
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-900/50 p-2 rounded-xl border border-white/5">
-        <div className="flex bg-slate-800 rounded-lg p-1">
-          <button onClick={() => setViewType('weekly')} className={`px-4 py-2 rounded-md text-xs font-bold uppercase transition-all ${viewType === 'weekly' ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Weekly</button>
-          <button onClick={() => { setViewType('all'); setWeekOffset(0); }} className={`px-4 py-2 rounded-md text-xs font-bold uppercase transition-all ${viewType === 'all' ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>All Time</button>
+        <div className="flex bg-slate-800 rounded-lg p-1 overflow-x-auto">
+          {['weekly', 'monthly', 'term', 'all'].map(type => (
+              <button 
+                key={type}
+                onClick={() => { setViewType(type); setDateOffset(0); }} 
+                className={`px-4 py-2 rounded-md text-xs font-bold uppercase transition-all whitespace-nowrap ${viewType === type ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}
+              >
+                {type}
+              </button>
+          ))}
         </div>
-        {viewType === 'weekly' && (
+        {viewType !== 'all' && (
           <div className="flex items-center gap-3">
-            <Button variant="icon" onClick={() => setWeekOffset(prev => prev - 1)}><ChevronLeft size={20} /></Button>
-            <div className="text-center min-w-[120px]">
-              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Week {5 + weekOffset}</div>
-              <div className="text-xs font-bold text-white">{formatDate(currentRange.start)} - {formatDate(currentRange.end)}</div>
+            <Button variant="icon" onClick={() => setDateOffset(prev => prev - 1)}><ChevronLeft size={20} /></Button>
+            <div className="text-center min-w-[140px]">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                  {viewType === 'weekly' ? `Week ${5 + dateOffset}` : viewType === 'monthly' ? 'Month View' : 'Term View'}
+              </div>
+              <div className="text-xs font-bold text-white">{currentRange.label}</div>
             </div>
-            <Button variant="icon" onClick={() => setWeekOffset(prev => prev + 1)} disabled={weekOffset >= 0}><ChevronRight size={20} /></Button>
+            <Button variant="icon" onClick={() => setDateOffset(prev => prev + 1)} disabled={dateOffset >= 0}><ChevronRight size={20} /></Button>
           </div>
         )}
       </div>
@@ -1079,8 +1170,8 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
         <Card className="bg-gradient-to-br from-lime-500/10 to-lime-600/5 border-lime-500/20 relative overflow-hidden group cursor-pointer hover:border-lime-400/50 transition-all" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Target size={40} /></div>
           <div className="text-lime-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex justify-between">
-             <span>Goal Progress</span>
-             <Pencil size={10} />
+              <span>Goal Progress</span>
+              <Pencil size={10} />
           </div>
           <div className="text-3xl font-bold text-white tracking-tight">{selfTrainingHours}h</div>
         </Card>
@@ -1095,21 +1186,21 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
         <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
-            {viewType === 'weekly' ? 'Goal %' : 'Avg Weekly'}
+            {viewType === 'all' ? 'Avg Weekly' : 'Goal %'}
           </div>
           <div className="text-3xl font-bold text-white tracking-tight">
-            {viewType === 'weekly' ? `${goalPercent}%` : `${averageWeeklyHours}h`}
+            {viewType === 'all' ? `${averageWeeklyHours}h` : `${goalPercent}%`}
           </div>
           <div className="text-[10px] text-lime-400 uppercase mt-1 flex items-center gap-1">
-            Target: {weeklyGoal}h
+            Target: {Math.round(targetHours)}h <Pencil size={8} />
           </div>
         </Card>
 
-        <Card className={`relative overflow-hidden group transition-colors ${goalAchieved && viewType === 'weekly' ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
+        <Card className={`relative overflow-hidden group transition-colors ${goalAchieved && viewType !== 'all' ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Trophy size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Goal Achieved?</div>
-          <div className={`text-3xl font-bold tracking-tight ${goalAchieved && viewType === 'weekly' ? 'text-lime-400' : 'text-slate-500'}`}>
-            {viewType === 'weekly' ? (goalAchieved ? 'YES' : 'NO') : 'N/A'}
+          <div className={`text-3xl font-bold tracking-tight ${goalAchieved && viewType !== 'all' ? 'text-lime-400' : 'text-slate-500'}`}>
+            {viewType !== 'all' ? (goalAchieved ? 'YES' : 'NO') : 'N/A'}
           </div>
         </Card>
       </div>
@@ -1137,16 +1228,16 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
           </div>
         </Card>
 
-        {viewType === 'weekly' && (
+        {viewType !== 'all' && (
           <Card>
-            <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Weekly Activity</h3>
+            <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Activity Breakdown</h3>
             <div className="relative h-32 mt-4">
-              {/* Daily Average Goal Line */}
+              {/* Reference Goal Line */}
               <div 
                 className="absolute w-full border-t border-dashed border-lime-400/50 z-10 pointer-events-none"
                 style={{ bottom: `${goalLinePct}%` }}
               >
-                <span className="absolute -top-3 right-0 text-[8px] text-lime-400 font-bold bg-slate-900 px-1">Daily Goal ({(dailyGoalMins/60).toFixed(1)}h)</span>
+                <span className="absolute -top-3 right-0 text-[8px] text-lime-400 font-bold bg-slate-900 px-1">Avg Goal ({(referenceMins/60).toFixed(1)}h)</span>
               </div>
 
               <div className="flex items-end justify-between h-full pt-4 px-6 gap-2 relative">
@@ -1157,41 +1248,56 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
                    <span>0h</span>
                  </div>
 
-                 {WEEK_DAYS.map((day, i) => {
-                   const dayData = chartData[i];
-                   const isToday = weekOffset === 0 && (new Date().getDay() + 6) % 7 === i;
+                 {chartLabels.map((label, i) => {
+                   const bucketData = chartBuckets[i];
                    
                    return (
                      <div 
-                        key={day} 
+                        key={label} 
                         className="flex flex-1 flex-col items-center gap-2 h-full justify-end group z-0 relative"
-                        onMouseEnter={() => setHoverBar({ day, data: dayData })}
+                        onMouseEnter={() => setHoverBar({ label, data: bucketData })}
                         onMouseLeave={() => setHoverBar(null)}
                      >
                        <div className="w-full bg-slate-800 rounded-sm flex flex-col-reverse justify-start relative overflow-hidden h-full">
-                         {/* Render Stacked Bars */}
-                         {Object.entries(dayData.activities).map(([cat, dur], idx) => {
-                            const segmentHeight = (dur / ceilingMins) * 100;
-                            return (
-                               <div key={idx} style={{ height: `${segmentHeight}%` }} className={`w-full ${CATEGORY_COLORS[cat]} opacity-90`}></div>
-                            );
+                         {/* Render Stacked Bars - Strict Order from CATEGORIES */}
+                         {CATEGORIES.map((cat, idx) => {
+                           const dur = bucketData.activities[cat] || 0;
+                           if (dur === 0) return null;
+                           const segmentHeight = (dur / ceilingMins) * 100;
+                           
+                           return (
+                              <div key={idx} style={{ height: `${segmentHeight}%` }} className={`w-full ${CATEGORY_COLORS[cat]} opacity-90 border-t border-black/20 relative group-hover:opacity-100 transition-opacity`}></div>
+                           );
                          })}
                        </div>
-                       <span className={`text-[10px] font-bold uppercase ${isToday ? 'text-lime-400' : 'text-slate-500'}`}>{day}</span>
+                       <span className={`text-[9px] font-bold uppercase text-slate-500`}>{label}</span>
                        
-                       {/* Tooltip */}
-                       {hoverBar && hoverBar.day === day && (
-                         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-slate-900 p-2 rounded shadow-xl border border-white/10 z-20 w-32 pointer-events-none">
-                            <div className="text-[10px] font-bold text-white mb-1 border-b border-white/10 pb-1">{day} Breakdown</div>
-                            {Object.entries(dayData.activities).map(([cat, dur]) => (
-                               <div key={cat} className="flex justify-between text-[8px] text-slate-300">
-                                 <span>{cat}</span>
-                                 <span>{Math.round(dur)}m</span>
-                               </div>
-                            ))}
-                            <div className="mt-1 pt-1 border-t border-white/10 flex justify-between text-[9px] font-bold text-white">
+                       {/* Enhanced Tooltip */}
+                       {hoverBar && hoverBar.label === label && (
+                         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-slate-950 p-3 rounded-lg shadow-2xl border border-white/20 z-50 w-40 pointer-events-none">
+                            <div className="text-[10px] font-black text-white mb-2 border-b border-white/10 pb-1 uppercase tracking-wider">{label} Breakdown</div>
+                            {Object.keys(bucketData.activities).length === 0 ? (
+                                <div className="text-[9px] text-slate-500 italic">No Activity</div>
+                            ) : (
+                                <div className="space-y-1.5">
+                                    {CATEGORIES.map(cat => {
+                                        const dur = bucketData.activities[cat] || 0;
+                                        if (dur === 0) return null;
+                                        return (
+                                            <div key={cat} className="flex items-center justify-between text-[9px] text-slate-300">
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className={`w-2 h-2 rounded-full ${CATEGORY_COLORS[cat]}`}></div>
+                                                    <span>{cat}</span>
+                                                </div>
+                                                <span className="font-mono text-white">{Math.round(dur)}m</span>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                            <div className="mt-2 pt-1 border-t border-white/10 flex justify-between text-[9px] font-bold text-lime-400">
                                <span>Total</span>
-                               <span>{(dayData.total / 60).toFixed(1)}h</span>
+                               <span>{(bucketData.total / 60).toFixed(1)}h</span>
                             </div>
                          </div>
                        )}
@@ -1610,184 +1716,6 @@ const ActivitySelector = ({ onLogActivity, onViewHistory }) => {
         <span className="flex items-center gap-2"><History size={16} /> Manage Full History</span>
         <ChevronRight size={16} />
       </Button>
-    </div>
-  );
-};
-
-// --- Timer Component ---
-const Timer = ({ drill, onComplete, onCancel }) => {
-  const [timeLeft, setTimeLeft] = useState(drill.defaultTime * 60);
-  const [isActive, setIsActive] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const audioCtxRef = useRef(null);
-  
-  useWakeLock(isActive); // Enable wake lock
-
-  useEffect(() => {
-    return () => {
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let interval = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft(time => time - 1);
-      }, 1000);
-    } else if (timeLeft === 0 && isActive) {
-      setIsActive(false);
-      setIsFinished(true);
-      playRefereeWhistle();
-    }
-    return () => clearInterval(interval);
-  }, [isActive, timeLeft]);
-  
-  // Whistle Sound
-  const playRefereeWhistle = () => {
-    try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const now = ctx.currentTime;
-
-      osc1.frequency.setValueAtTime(2500, now);
-      osc2.frequency.setValueAtTime(2300, now); 
-
-      const mod = ctx.createOscillator();
-      const modGain = ctx.createGain();
-      mod.frequency.value = 35; 
-      modGain.gain.value = 500; 
-
-      mod.connect(modGain);
-      modGain.connect(osc1.frequency);
-      modGain.connect(osc2.frequency);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.8, now + 0.1); 
-      gain.gain.setValueAtTime(0.8, now + 2.5); 
-      gain.gain.linearRampToValueAtTime(0, now + 3.0); 
-
-      osc1.start(now);
-      osc2.start(now);
-      mod.start(now);
-
-      osc1.stop(now + 3.0);
-      osc2.stop(now + 3.0);
-      mod.stop(now + 3.0);
-
-    } catch (e) {
-      console.error("Audio beep failed", e);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
-  };
-
-  const adjustTime = (minutes) => {
-    setTimeLeft(prev => Math.max(0, prev + (minutes * 60)));
-  };
-
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const formatTotalTime = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${mins}m`;
-  };
-
-  return (
-    <div 
-      className={`flex flex-col items-center justify-center p-8 transition-all duration-500 ${
-        isFullscreen ? 'fixed inset-0 z-50 bg-black' : 'min-h-[600px] bg-transparent'
-      }`}
-    >
-      <div className={`absolute inset-0 bg-gradient-to-b from-slate-900 via-slate-950 to-black ${isFullscreen ? '' : 'rounded-3xl border border-white/10'} -z-10`} />
-
-      <div className="absolute top-6 left-6 z-20">
-        <button onClick={toggleFullscreen} className="p-3 bg-white/5 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-colors backdrop-blur-sm">
-          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-        </button>
-      </div>
-      
-      <div className="absolute top-6 right-6 z-20">
-        <button onClick={onCancel} className="p-3 bg-white/5 rounded-full text-white/50 hover:text-white hover:bg-red-500/20 transition-colors backdrop-blur-sm">
-          <X size={24} />
-        </button>
-      </div>
-
-      <div className="text-center space-y-10 animate-in zoom-in duration-300 w-full max-w-lg">
-        <div>
-          <h2 className="text-2xl md:text-4xl font-black text-white italic uppercase tracking-widest mb-2 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">{drill.name}</h2>
-          <p className="text-lime-400 font-bold uppercase tracking-wider text-sm">{drill.category}</p>
-        </div>
-        
-        <div className="relative group">
-           {/* Time Controls */}
-           {!isActive && !isFinished && (
-            <div className={`absolute -right-4 md:-right-16 top-1/2 -translate-y-1/2 flex flex-col gap-2 transition-opacity ${isActive ? 'opacity-0' : 'opacity-100'}`}>
-              <button onClick={() => adjustTime(1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-lime-400 transition-colors">
-                <ChevronUp size={32} />
-              </button>
-              <button onClick={() => adjustTime(-1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-red-400 transition-colors">
-                <ChevronDown size={32} />
-              </button>
-            </div>
-          )}
-
-          <div className={`font-mono font-bold tabular-nums tracking-tighter transition-all select-none drop-shadow-[0_0_15px_rgba(0,0,0,0.5)] ${
-            isFullscreen ? 'text-[20vw] md:text-[15vw]' : 'text-8xl md:text-9xl'
-          } ${timeLeft <= 10 && isActive ? 'text-red-500 animate-pulse drop-shadow-[0_0_30px_rgba(239,68,68,0.6)]' : 'text-white'}`}>
-            {formatTime(timeLeft)}
-          </div>
-        </div>
-
-        {!isFinished ? (
-          <div className="flex gap-6 justify-center items-center">
-             <button 
-              onClick={onCancel}
-              className="w-16 h-16 flex items-center justify-center rounded-full bg-slate-800 border border-white/10 hover:bg-slate-700 text-slate-400 hover:text-white transition-all active:scale-95"
-            >
-              <Square size={20} fill="currentColor" />
-            </button>
-
-            <button 
-              onClick={() => setIsActive(!isActive)}
-              className="w-24 h-24 flex items-center justify-center rounded-full bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_30px_rgba(163,230,53,0.4)] transition-all hover:scale-105 active:scale-95"
-            >
-              {isActive ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-2" />}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="text-4xl font-black text-lime-400 uppercase tracking-tighter animate-bounce drop-shadow-[0_0_20px_rgba(163,230,53,0.5)]">DRILL COMPLETE!</div>
-            <Button 
-              onClick={() => onComplete(drill.defaultTime)} // Logging default time for now
-              className="w-full py-4 text-xl"
-            >
-              <CheckCircle size={24} /> Log Session
-            </Button>
-          </div>
-        )}
-      </div>
     </div>
   );
 };
