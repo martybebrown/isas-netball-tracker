@@ -117,6 +117,83 @@ try {
   console.error("Firebase init failed:", error);
 }
 
+// --- Sound & Wake Lock Helpers ---
+const playRefereeWhistle = () => {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+
+    // We create two oscillators to create a "beat" frequency (the trill)
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    // Whistle is high pitched, around 2000-3000Hz
+    osc1.frequency.setValueAtTime(2500, now);
+    osc2.frequency.setValueAtTime(2300, now); // Slight detune for texture
+
+    // Modulator for the "pea" rattle effect (Vibrato)
+    const mod = ctx.createOscillator();
+    const modGain = ctx.createGain();
+    mod.frequency.value = 35; // Fast rattle
+    modGain.gain.value = 500; // Depth of rattle
+
+    mod.connect(modGain);
+    modGain.connect(osc1.frequency);
+    modGain.connect(osc2.frequency);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ctx.destination);
+
+    // Envelope (Attack, Sustain, Release)
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.8, now + 0.1); // Fast attack
+    gain.gain.setValueAtTime(0.8, now + 2.5); // Sustain
+    gain.gain.linearRampToValueAtTime(0, now + 3.0); // Release
+
+    // Start/Stop
+    osc1.start(now);
+    osc2.start(now);
+    mod.start(now);
+
+    osc1.stop(now + 3.0);
+    osc2.stop(now + 3.0);
+    mod.stop(now + 3.0);
+    
+    // Cleanup
+    setTimeout(() => ctx.close(), 3500);
+
+  } catch (e) {
+    console.error("Audio play failed", e);
+  }
+};
+
+const useWakeLock = (isActive) => {
+  useEffect(() => {
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && isActive) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.log(`Wake Lock error: ${err.name}, ${err.message}`);
+        }
+      }
+    };
+    
+    if (isActive) {
+      requestWakeLock();
+    }
+    
+    return () => {
+      if (wakeLock) wakeLock.release();
+    };
+  }, [isActive]);
+};
+
+
 // --- Helper Components ---
 
 const Button = ({ children, onClick, variant = 'primary', className = '', ...props }) => {
@@ -135,8 +212,8 @@ const Button = ({ children, onClick, variant = 'primary', className = '', ...pro
   );
 };
 
-const Card = ({ children, className = '' }) => (
-  <div className={`bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl ${className}`}>
+const Card = ({ children, className = '', onClick }) => (
+  <div onClick={onClick} className={`bg-slate-900/60 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl ${onClick ? 'cursor-pointer' : ''} ${className}`}>
     {children}
   </div>
 );
@@ -573,8 +650,10 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cumulativeTime, setCumulativeTime] = useState(0);
   
-  // Use a Ref to hold the AudioContext to prevent leaks (browsers limit contexts to ~6)
+  // Use a Ref to hold the AudioContext to prevent leaks
   const audioCtxRef = useRef(null);
+
+  useWakeLock(isActive); // Enable Wake Lock when active
 
   const currentDrill = queue[currentIndex];
   const nextDrill = queue[currentIndex + 1];
@@ -606,8 +685,7 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
   }, [isActive, timeLeft]);
 
   const handlePhaseComplete = () => {
-    // Attempt beep
-    playBeep(isResting ? 880 : 440);
+    playRefereeWhistle();
 
     if (!isResting) {
       const duration = currentDrill.defaultTime; 
@@ -633,29 +711,52 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
     setTimeLeft(0); 
   };
 
-  const playBeep = (freq = 440) => {
+  // Sound Effect: Referee Whistle (Pea Whistle Trill)
+  const playRefereeWhistle = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      // Initialize Context if null (Lazy load to respect browser autoplay policies)
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
-      }
-      
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
-      // Resume if suspended (common browser requirement)
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
+      if (ctx.state === 'suspended') ctx.resume();
 
-      const osc = ctx.createOscillator();
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.connect(gain);
+      const now = ctx.currentTime;
+
+      // Frequencies for a shrill whistle (approx ~2.5kHz)
+      osc1.frequency.setValueAtTime(2500, now);
+      osc2.frequency.setValueAtTime(2300, now); // Detune for beat frequency
+
+      // Modulator for the "pea" rattle
+      const mod = ctx.createOscillator();
+      const modGain = ctx.createGain();
+      mod.frequency.value = 35; // Rattle speed
+      modGain.gain.value = 500; // Rattle depth
+
+      mod.connect(modGain);
+      modGain.connect(osc1.frequency);
+      modGain.connect(osc2.frequency);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
       gain.connect(ctx.destination);
-      osc.frequency.value = freq;
-      osc.start();
-      gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.5);
-      osc.stop(ctx.currentTime + 0.5);
-    } catch(e) {
+
+      // Envelope
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.8, now + 0.1);
+      gain.gain.setValueAtTime(0.8, now + 2.5);
+      gain.gain.linearRampToValueAtTime(0, now + 3.0);
+
+      osc1.start(now);
+      osc2.start(now);
+      mod.start(now);
+
+      osc1.stop(now + 3.0);
+      osc2.stop(now + 3.0);
+      mod.stop(now + 3.0);
+
+    } catch (e) {
       console.error("Audio beep failed", e);
     }
   };
@@ -740,6 +841,30 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
       </div>
     </div>
   );
+};
+
+// --- Wake Lock Hook ---
+const useWakeLock = (isActive) => {
+  useEffect(() => {
+    let wakeLock = null;
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && isActive) {
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (err) {
+          console.log(`Wake Lock error: ${err.name}, ${err.message}`);
+        }
+      }
+    };
+    
+    if (isActive) {
+      requestWakeLock();
+    }
+    
+    return () => {
+      if (wakeLock) wakeLock.release();
+    };
+  }, [isActive]);
 };
 
 // --- DrillSelector Component ---
@@ -978,6 +1103,8 @@ const Timer = ({ drill, onComplete, onCancel }) => {
   const [isFinished, setIsFinished] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const audioCtxRef = useRef(null);
+  
+  useWakeLock(isActive); // Enable wake lock
 
   useEffect(() => {
     return () => {
@@ -997,37 +1124,55 @@ const Timer = ({ drill, onComplete, onCancel }) => {
     } else if (timeLeft === 0 && isActive) {
       setIsActive(false);
       setIsFinished(true);
-      playAlarm();
+      playRefereeWhistle();
     }
     return () => clearInterval(interval);
   }, [isActive, timeLeft]);
-
-  const playAlarm = () => {
+  
+  // Whistle Sound
+  const playRefereeWhistle = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
-      }
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume();
 
-      const osc = ctx.createOscillator();
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'triangle';
-      osc.frequency.value = 880; 
-      
       const now = ctx.currentTime;
-      gain.gain.setValueAtTime(0.5, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-      gain.gain.setValueAtTime(0.5, now + 0.6);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 1.1);
-      
-      osc.start(now);
-      osc.stop(now + 1.2);
+
+      osc1.frequency.setValueAtTime(2500, now);
+      osc2.frequency.setValueAtTime(2300, now); 
+
+      const mod = ctx.createOscillator();
+      const modGain = ctx.createGain();
+      mod.frequency.value = 35;
+      modGain.gain.value = 500; 
+
+      mod.connect(modGain);
+      modGain.connect(osc1.frequency);
+      modGain.connect(osc2.frequency);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.8, now + 0.1);
+      gain.gain.setValueAtTime(0.8, now + 2.5);
+      gain.gain.linearRampToValueAtTime(0, now + 3.0);
+
+      osc1.start(now);
+      osc2.start(now);
+      mod.start(now);
+
+      osc1.stop(now + 3.0);
+      osc2.stop(now + 3.0);
+      mod.stop(now + 3.0);
+
     } catch (e) {
-      console.error("Audio not supported");
+      console.error("Audio beep failed", e);
     }
   };
 
@@ -1043,6 +1188,12 @@ const Timer = ({ drill, onComplete, onCancel }) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const formatTotalTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${mins}m`;
   };
 
   return (
@@ -1326,6 +1477,7 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
   const [viewType, setViewType] = useState('weekly'); 
   const [weekOffset, setWeekOffset] = useState(0); 
   const [showGoalModal, setShowGoalModal] = useState(false);
+  const [hoverBar, setHoverBar] = useState(null);
 
   const getWeekRange = (offset) => {
     const now = new Date();
@@ -1376,19 +1528,25 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
     return acc;
   }, {});
 
-  const chartData = Array(7).fill(0);
+  // Chart Data Structure: Array of objects { total: number, activities: { 'Self Training': number, ... } }
+  const chartData = Array.from({ length: 7 }, () => ({ total: 0, activities: {} }));
+  
   if (viewType === 'weekly') {
     filteredLogs.forEach(log => {
       const date = new Date(log.date);
       const dayIndex = (date.getDay() + 6) % 7; 
-      chartData[dayIndex] += log.duration;
+      chartData[dayIndex].total += log.duration;
+      if (!chartData[dayIndex].activities[log.category]) {
+         chartData[dayIndex].activities[log.category] = 0;
+      }
+      chartData[dayIndex].activities[log.category] += log.duration;
     });
   }
   
   // Chart Scaling & Goal Line
   const dailyGoalMins = (weeklyGoal / 7) * 60;
-  const maxDataMins = Math.max(...chartData);
-  const ceilingMins = Math.max(Math.ceil(Math.max(maxDataMins, dailyGoalMins) / 60) * 60, 60); // At least 1h, round up to hour
+  const maxDataMins = Math.max(...chartData.map(d => d.total));
+  const ceilingMins = Math.max(Math.ceil(Math.max(maxDataMins, dailyGoalMins) / 60) * 60, 60); 
   
   const goalLinePct = (dailyGoalMins / ceilingMins) * 100;
   const maxHours = Math.ceil(ceilingMins / 60);
@@ -1424,19 +1582,23 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-lime-500/10 to-lime-600/5 border-lime-500/20 relative overflow-hidden group">
+        {/* Goal Progress Card */}
+        <Card className="bg-gradient-to-br from-lime-500/10 to-lime-600/5 border-lime-500/20 relative overflow-hidden group cursor-pointer hover:border-lime-400/50 transition-all" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Target size={40} /></div>
-          <div className="text-lime-400 text-[10px] font-bold uppercase tracking-wider mb-1">Goal Progress</div>
+          <div className="text-lime-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex justify-between">
+             <span>Goal Progress</span>
+             <Pencil size={10} />
+          </div>
           <div className="text-3xl font-bold text-white tracking-tight">{selfTrainingHours}h</div>
         </Card>
+        
         <Card className="relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Clock size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Total Hours</div>
           <div className="text-3xl font-bold text-white tracking-tight">{totalHours}h</div>
         </Card>
         
-        {/* Conditional Goal Progress Card */}
-        <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all" onClick={() => setShowGoalModal(true)}>
+        <Card className="relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
             {viewType === 'weekly' ? 'Goal %' : 'Avg Weekly'}
@@ -1445,7 +1607,7 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
             {viewType === 'weekly' ? `${goalPercent}%` : `${averageWeeklyHours}h`}
           </div>
           <div className="text-[10px] text-lime-400 uppercase mt-1 flex items-center gap-1">
-            Target: {weeklyGoal}h <Pencil size={8} />
+            Target: {weeklyGoal}h
           </div>
         </Card>
 
@@ -1502,14 +1664,44 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
                  </div>
 
                  {WEEK_DAYS.map((day, i) => {
-                   const heightPct = (chartData[i] / ceilingMins) * 100;
+                   const dayData = chartData[i];
+                   const totalHeightPct = (dayData.total / ceilingMins) * 100;
                    const isToday = weekOffset === 0 && (new Date().getDay() + 6) % 7 === i;
+                   
                    return (
-                     <div key={day} className="flex flex-1 flex-col items-center gap-2 h-full justify-end group z-0">
-                       <div className="w-full bg-slate-800 rounded-sm flex items-end relative overflow-hidden h-full">
-                         <div className={`w-full transition-all duration-700 ease-out shadow-[0_0_15px_rgba(163,230,53,0.2)] ${heightPct > 0 ? 'bg-lime-500/80 group-hover:bg-lime-400' : 'bg-transparent'}`} style={{ height: `${Math.max(heightPct, 0)}%` }}></div>
+                     <div 
+                        key={day} 
+                        className="flex flex-1 flex-col items-center gap-2 h-full justify-end group z-0 relative"
+                        onMouseEnter={() => setHoverBar({ day, data: dayData })}
+                        onMouseLeave={() => setHoverBar(null)}
+                     >
+                       <div className="w-full bg-slate-800 rounded-sm flex flex-col-reverse justify-start relative overflow-hidden h-full">
+                         {/* Render Stacked Bars */}
+                         {Object.entries(dayData.activities).map(([cat, dur], idx) => {
+                            const segmentHeight = (dur / ceilingMins) * 100;
+                            return (
+                               <div key={idx} style={{ height: `${segmentHeight}%` }} className={`w-full ${CATEGORY_COLORS[cat]} opacity-90`}></div>
+                            );
+                         })}
                        </div>
                        <span className={`text-[10px] font-bold uppercase ${isToday ? 'text-lime-400' : 'text-slate-500'}`}>{day}</span>
+                       
+                       {/* Tooltip */}
+                       {hoverBar && hoverBar.day === day && (
+                         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-slate-900 p-2 rounded shadow-xl border border-white/10 z-20 w-32 pointer-events-none">
+                            <div className="text-[10px] font-bold text-white mb-1 border-b border-white/10 pb-1">{day} Breakdown</div>
+                            {Object.entries(dayData.activities).map(([cat, dur]) => (
+                               <div key={cat} className="flex justify-between text-[8px] text-slate-300">
+                                 <span>{cat}</span>
+                                 <span>{Math.round(dur)}m</span>
+                               </div>
+                            ))}
+                            <div className="mt-1 pt-1 border-t border-white/10 flex justify-between text-[9px] font-bold text-white">
+                               <span>Total</span>
+                               <span>{(dayData.total / 60).toFixed(1)}h</span>
+                            </div>
+                         </div>
+                       )}
                      </div>
                    );
                  })}
@@ -1589,14 +1781,14 @@ export default function App() {
     }
   }, [user]);
 
-  // Load Settings
-  useEffect(() => {
-    const savedGoal = localStorage.getItem('soccer_goal');
-    if (savedGoal) setWeeklyGoal(parseFloat(savedGoal));
-    
-    const savedCats = localStorage.getItem('soccer_goal_cats');
-    if (savedCats) setGoalCategories(JSON.parse(savedCats));
-  }, []);
+  const handleSeedData = () => {
+    if (confirm("Reset local data to spreadsheet history (Weeks 1-4)? This will overwrite local changes.")) {
+      const history = generateHistoricalData();
+      setLogs(history);
+      localStorage.setItem('soccer_logs_v6_local', JSON.stringify(history));
+      alert("Local data reset successfully!");
+    }
+  };
 
   const handleSetGoal = (newGoal, newCategories) => {
     setWeeklyGoal(newGoal);
