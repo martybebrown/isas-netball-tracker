@@ -6,6 +6,7 @@ import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc
 
 // --- Constants & Config ---
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CATEGORIES = ["Self Training", "Training", "Match", "School"];
 
 const DEFAULT_DRILLS = [
@@ -206,6 +207,50 @@ const Card = ({ children, className = '', onClick }) => (
     {children}
   </div>
 );
+
+// --- Circular Goal Progress Component ---
+const GoalRing = ({ percent }) => {
+  const radius = 30;
+  const stroke = 6;
+  const normalizedRadius = radius - stroke * 2;
+  const circumference = normalizedRadius * 2 * Math.PI;
+  const strokeDashoffset = circumference - (Math.min(percent, 100) / 100) * circumference;
+  
+  // Dynamic color based on percent
+  const ringColor = percent >= 100 ? 'text-lime-400' : 'text-lime-500';
+
+  return (
+    <div className="relative flex items-center justify-center">
+      <svg height={radius * 2} width={radius * 2} className="rotate-[-90deg]">
+        <circle
+          stroke="currentColor"
+          fill="transparent"
+          strokeWidth={stroke}
+          r={normalizedRadius}
+          cx={radius}
+          cy={radius}
+          className="text-white/10"
+        />
+        <circle
+          stroke="currentColor"
+          fill="transparent"
+          strokeWidth={stroke}
+          strokeDasharray={circumference + ' ' + circumference}
+          style={{ strokeDashoffset, transition: 'stroke-dashoffset 0.5s ease-in-out' }}
+          strokeLinecap="round"
+          r={normalizedRadius}
+          cx={radius}
+          cy={radius}
+          className={ringColor}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+         <span className="text-[10px] font-bold text-white">{Math.round(percent)}%</span>
+      </div>
+    </div>
+  );
+};
+
 
 // --- Modals ---
 
@@ -967,7 +1012,7 @@ const CalendarHeatmap = ({ logs }) => {
 // --- Stats Page ---
 
 const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGoalCategories }) => {
-  const [viewType, setViewType] = useState('weekly'); // 'weekly', 'monthly', 'term', 'all'
+  const [viewType, setViewType] = useState('weekly'); // 'daily', 'weekly', 'monthly', 'term', 'yearly'
   const [dateOffset, setDateOffset] = useState(0); 
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [hoverBar, setHoverBar] = useState(null);
@@ -976,6 +1021,15 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
   const getViewRange = (type, offset) => {
     const d = new Date();
     d.setHours(0,0,0,0);
+
+    if (type === 'daily') {
+        d.setDate(d.getDate() + offset);
+        const start = new Date(d);
+        start.setHours(0,0,0,0);
+        const end = new Date(d);
+        end.setHours(23,59,59,999);
+        return { start, end, label: start.toLocaleDateString('en-US', {weekday: 'long', month: 'short', day: 'numeric'}) };
+    }
 
     if (type === 'weekly') {
       d.setDate(d.getDate() + (offset * 7));
@@ -1003,16 +1057,11 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
       const year = d.getFullYear();
       const startOfYear = new Date(year, 0, 1);
       
-      // Calculate current term index (0-3) based on today
       const diffTime = Math.abs(d - startOfYear);
       const diffWeeks = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 7)); 
       const currentTermIndex = Math.floor((diffWeeks - 1) / 13);
-      
       const targetIndex = currentTermIndex + offset;
       
-      // Calculate start of that term relative to start of year
-      // To align cleanly, we often want Term 1 to start on the first Monday of the year? 
-      // Let's stick to simple 13-week blocks from Jan 1 for consistency
       const start = new Date(startOfYear);
       start.setDate(start.getDate() + (targetIndex * 13 * 7));
       
@@ -1033,13 +1082,19 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
       };
     }
     
-    return { start: new Date(0), end: new Date() }; // All time fallback
+    if (type === 'yearly') {
+        d.setFullYear(d.getFullYear() + offset);
+        const start = new Date(d.getFullYear(), 0, 1);
+        const end = new Date(d.getFullYear(), 11, 31, 23, 59, 59, 999);
+        return { start, end, label: start.getFullYear().toString() };
+    }
+    
+    return { start: new Date(0), end: new Date() }; 
   };
 
   const currentRange = getViewRange(viewType, dateOffset);
 
   const filteredLogs = logs.filter(log => {
-    if (viewType === 'all') return true;
     const logDate = new Date(log.date);
     return logDate >= currentRange.start && logDate <= currentRange.end;
   });
@@ -1054,24 +1109,14 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
 
   // Goal scaling
   let targetHours = weeklyGoal;
+  if (viewType === 'daily') targetHours = weeklyGoal / 7;
   if (viewType === 'monthly') targetHours = weeklyGoal * 4.33; // Approx weeks in month
   if (viewType === 'term') targetHours = weeklyGoal * 13;
+  if (viewType === 'yearly') targetHours = weeklyGoal * 52;
   
   const goalMins = targetHours * 60;
   const goalPercent = Math.round((selfTrainingMins / Math.max(goalMins, 1)) * 100);
   const goalAchieved = selfTrainingMins >= goalMins;
-
-  // Active Weeks Calculation for All-Time Avg
-  const uniqueWeeks = new Set(logs.map(l => {
-    const d = new Date(l.date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(d.setDate(diff));
-    return monday.toDateString();
-  }));
-  const activeWeeksCount = uniqueWeeks.size || 1;
-  const allTimeTotalMins = logs.reduce((acc, l) => acc + l.duration, 0);
-  const averageWeeklyHours = (allTimeTotalMins / 60 / activeWeeksCount).toFixed(1);
 
   const byCategory = filteredLogs.reduce((acc, log) => {
     acc[log.category] = (acc[log.category] || 0) + (log.duration / 60);
@@ -1083,7 +1128,22 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
   let chartLabels = [];
   let getKey = () => 0;
 
-  if (viewType === 'weekly') {
+  if (viewType === 'daily') {
+      // 1 Aggregate Bucket (00:00-06:00) + 18 Hourly Buckets (06:00-23:00) = 19 Buckets
+      chartBuckets = Array.from({ length: 19 }, () => ({ total: 0, activities: {} }));
+      chartLabels = ['Early'];
+      for(let h=6; h<24; h++) {
+          const suffix = h >= 12 ? 'p' : 'a';
+          const hour12 = h > 12 ? h - 12 : h;
+          chartLabels.push(`${hour12}${suffix}`);
+      }
+      
+      getKey = (date) => {
+          const h = date.getHours();
+          if (h < 6) return 0; // Bucket 0 is for anything before 6am
+          return h - 5; // 6am maps to index 1, 7am to 2, etc.
+      };
+  } else if (viewType === 'weekly') {
       chartBuckets = Array.from({ length: 7 }, () => ({ total: 0, activities: {} }));
       chartLabels = WEEK_DAYS;
       getKey = (date) => (date.getDay() + 6) % 7;
@@ -1091,37 +1151,39 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
       // 5 Weeks max
       chartBuckets = Array.from({ length: 5 }, () => ({ total: 0, activities: {} }));
       chartLabels = ['W1', 'W2', 'W3', 'W4', 'W5'];
-      // Key based on week index relative to start of month range?
-      // Simple logic: (Date - StartDate) / 7 days
+      // Key based on week index relative to start of month range
       getKey = (date) => Math.min(Math.floor((date - currentRange.start) / (1000 * 60 * 60 * 24 * 7)), 4);
   } else if (viewType === 'term') {
       // 13 Weeks
       chartBuckets = Array.from({ length: 13 }, () => ({ total: 0, activities: {} }));
       chartLabels = Array.from({length: 13}, (_, i) => `W${i+1}`);
       getKey = (date) => Math.min(Math.floor((date - currentRange.start) / (1000 * 60 * 60 * 24 * 7)), 12);
+  } else if (viewType === 'yearly') {
+      chartBuckets = Array.from({ length: 12 }, () => ({ total: 0, activities: {} }));
+      chartLabels = MONTHS;
+      getKey = (date) => date.getMonth();
   }
 
   // Populate buckets
-  if (viewType !== 'all') {
-      filteredLogs.forEach(log => {
-        const date = new Date(log.date);
-        const idx = getKey(date);
-        if (chartBuckets[idx]) {
-            chartBuckets[idx].total += log.duration;
-            if (!chartBuckets[idx].activities[log.category]) {
-                chartBuckets[idx].activities[log.category] = 0;
-            }
-            chartBuckets[idx].activities[log.category] += log.duration;
+  filteredLogs.forEach(log => {
+    const date = new Date(log.date);
+    const idx = getKey(date);
+    if (chartBuckets[idx]) {
+        chartBuckets[idx].total += log.duration;
+        if (!chartBuckets[idx].activities[log.category]) {
+            chartBuckets[idx].activities[log.category] = 0;
         }
-      });
-  }
+        chartBuckets[idx].activities[log.category] += log.duration;
+    }
+  });
   
   // Chart Scaling
   const dataMax = chartBuckets.length > 0 ? Math.max(...chartBuckets.map(d => d.total)) : 0;
   // Use either the weekly goal or daily goal as reference line depending on view
   let referenceMins = 0;
-  if (viewType === 'weekly') referenceMins = (weeklyGoal / 7) * 60; // Daily avg
-  else referenceMins = weeklyGoal * 60; // Weekly goal for weekly buckets
+  if (viewType === 'daily') referenceMins = 0; // Hide line
+  else if (viewType === 'weekly') referenceMins = (weeklyGoal / 7) * 60; // Daily avg
+  else referenceMins = weeklyGoal * 60; // Weekly goal for weekly buckets in month/term/year
 
   const ceilingMins = Math.max(Math.ceil(Math.max(dataMax, referenceMins) / 60) * 60, 60);
   const goalLinePct = (referenceMins / ceilingMins) * 100;
@@ -1140,8 +1202,8 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
       )}
 
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-900/50 p-2 rounded-xl border border-white/5">
-        <div className="flex bg-slate-800 rounded-lg p-1 overflow-x-auto">
-          {['weekly', 'monthly', 'term', 'all'].map(type => (
+        <div className="flex bg-slate-800 rounded-lg p-1 overflow-x-auto max-w-full">
+          {['daily', 'weekly', 'monthly', 'term', 'yearly'].map(type => (
               <button 
                 key={type}
                 onClick={() => { setViewType(type); setDateOffset(0); }} 
@@ -1151,96 +1213,87 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
               </button>
           ))}
         </div>
-        {viewType !== 'all' && (
-          <div className="flex items-center gap-3">
-            <Button variant="icon" onClick={() => setDateOffset(prev => prev - 1)}><ChevronLeft size={20} /></Button>
-            <div className="text-center min-w-[140px]">
-              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                  {viewType === 'weekly' ? `Week ${5 + dateOffset}` : viewType === 'monthly' ? 'Month View' : 'Term View'}
-              </div>
-              <div className="text-xs font-bold text-white">{currentRange.label}</div>
+        
+        <div className="flex items-center gap-3">
+          <Button variant="icon" onClick={() => setDateOffset(prev => prev - 1)}><ChevronLeft size={20} /></Button>
+          <div className="text-center min-w-[140px]">
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                {viewType === 'daily' ? 'Day View' : viewType === 'weekly' ? `Week ${5 + dateOffset}` : viewType === 'monthly' ? 'Month View' : viewType === 'yearly' ? 'Year View' : 'Term View'}
             </div>
-            <Button variant="icon" onClick={() => setDateOffset(prev => prev + 1)} disabled={dateOffset >= 0}><ChevronRight size={20} /></Button>
+            <div className="text-xs font-bold text-white">{currentRange.label}</div>
           </div>
-        )}
+          <Button variant="icon" onClick={() => setDateOffset(prev => prev + 1)} disabled={dateOffset >= 0}><ChevronRight size={20} /></Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Goal Progress Card */}
-        <Card className="bg-gradient-to-br from-lime-500/10 to-lime-600/5 border-lime-500/20 relative overflow-hidden group cursor-pointer hover:border-lime-400/50 transition-all" onClick={() => setShowGoalModal(true)}>
-          <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity"><Target size={40} /></div>
-          <div className="text-lime-400 text-[10px] font-bold uppercase tracking-wider mb-1 flex justify-between">
+        {/* Goal Progress Card - No Ring */}
+        <Card className="bg-gradient-to-br from-lime-500/10 to-lime-600/5 border-lime-500/20 relative overflow-hidden group cursor-pointer hover:border-lime-400/50 transition-all flex flex-col justify-between" onClick={() => setShowGoalModal(true)}>
+           <div className="text-lime-400 text-[10px] font-bold uppercase tracking-wider mb-2 flex justify-between">
               <span>Goal Progress</span>
               <Pencil size={10} />
           </div>
+          
           <div className="text-3xl font-bold text-white tracking-tight">{selfTrainingHours}h</div>
+          
+          <div className="text-[9px] text-lime-500/70 uppercase font-bold mt-2">
+            Target: {Math.round(targetHours)}h
+          </div>
         </Card>
         
-        <Card className="relative overflow-hidden group">
+        <Card className="relative overflow-hidden group flex flex-col justify-between">
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Clock size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Total Hours</div>
           <div className="text-3xl font-bold text-white tracking-tight">{totalHours}h</div>
+          <div className="text-[9px] text-slate-600 uppercase font-bold mt-2">
+            All Activity Types
+          </div>
         </Card>
         
-        {/* Conditional Goal Progress Card */}
-        <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all" onClick={() => setShowGoalModal(true)}>
+        {/* Goal Completion Card - With Ring */}
+        <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all flex flex-col justify-between" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
-            {viewType === 'all' ? 'Avg Weekly' : 'Goal %'}
+            Goal Completion
           </div>
-          <div className="text-3xl font-bold text-white tracking-tight">
-            {viewType === 'all' ? `${averageWeeklyHours}h` : `${goalPercent}%`}
-          </div>
-          <div className="text-[10px] text-lime-400 uppercase mt-1 flex items-center gap-1">
-            Target: {Math.round(targetHours)}h <Pencil size={8} />
+          
+          <div className="flex items-center justify-center">
+             <GoalRing percent={goalPercent} />
           </div>
         </Card>
 
-        <Card className={`relative overflow-hidden group transition-colors ${goalAchieved && viewType !== 'all' ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
+        <Card className={`relative overflow-hidden group transition-colors flex flex-col justify-between ${goalAchieved ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Trophy size={40} /></div>
-          <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Goal Achieved?</div>
-          <div className={`text-3xl font-bold tracking-tight ${goalAchieved && viewType !== 'all' ? 'text-lime-400' : 'text-slate-500'}`}>
-            {viewType !== 'all' ? (goalAchieved ? 'YES' : 'NO') : 'N/A'}
+          <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Target Met?</div>
+          <div className={`text-3xl font-bold tracking-tight ${goalAchieved ? 'text-lime-400' : 'text-slate-500'}`}>
+            {goalAchieved ? 'YES' : 'NO'}
           </div>
+          {goalAchieved && <div className="text-[9px] text-lime-400 uppercase font-bold mt-2">Great Job!</div>}
         </Card>
       </div>
 
-      <div className={`grid grid-cols-1 ${viewType === 'all' ? 'md:grid-cols-1' : 'md:grid-cols-2'} gap-6`}>
-        {viewType === 'all' && (
-          <CalendarHeatmap logs={logs} />
-        )}
+      {/* Yearly Heatmap - Full Width Row */}
+      {viewType === 'yearly' && (
+        <div className="mb-6">
+           <CalendarHeatmap logs={logs} />
+        </div>
+      )}
 
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-6`}>
         <Card>
-          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><Clock size={14} className="text-lime-400" /> Category Split</h3>
-          <div className="space-y-5">
-            {Object.keys(byCategory).length === 0 && <p className="text-slate-600 text-sm italic">No data yet.</p>}
-            {Object.entries(byCategory).map(([cat, hours]) => (
-              <div key={cat}>
-                <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
-                  <span className="text-slate-300">{cat}</span>
-                  <span className="text-lime-400">{hours.toFixed(1)}h</span>
+          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Activity Breakdown</h3>
+            <div className="relative h-40 mt-4">
+              {/* Reference Goal Line - Hidden on Daily view */}
+              {viewType !== 'daily' && (
+                <div 
+                  className="absolute w-full border-t border-dashed border-lime-400/50 z-10 pointer-events-none"
+                  style={{ bottom: `${goalLinePct}%` }}
+                >
+                  <span className="absolute -top-3 right-0 text-[8px] text-lime-400 font-bold bg-slate-900 px-1">Goal ({(referenceMins/60).toFixed(1)}h)</span>
                 </div>
-                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full ${CATEGORY_COLORS[cat]}`} style={{ width: `${(hours / Math.max(parseFloat(totalHours), 0.1)) * 100}%` }}></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+              )}
 
-        {viewType !== 'all' && (
-          <Card>
-            <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Activity Breakdown</h3>
-            <div className="relative h-32 mt-4">
-              {/* Reference Goal Line */}
-              <div 
-                className="absolute w-full border-t border-dashed border-lime-400/50 z-10 pointer-events-none"
-                style={{ bottom: `${goalLinePct}%` }}
-              >
-                <span className="absolute -top-3 right-0 text-[8px] text-lime-400 font-bold bg-slate-900 px-1">Avg Goal ({(referenceMins/60).toFixed(1)}h)</span>
-              </div>
-
-              <div className="flex items-end justify-between h-full pt-4 px-6 gap-2 relative">
+              <div className="flex items-end justify-between h-full pt-4 px-6 gap-1 relative">
                  {/* Y-Axis Labels */}
                  <div className="absolute left-0 top-0 bottom-6 w-4 flex flex-col justify-between text-[8px] text-slate-600 font-mono">
                    <span>{maxHours}h</span>
@@ -1248,14 +1301,16 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
                    <span>0h</span>
                  </div>
 
-                 {chartLabels.map((label, i) => {
-                   const bucketData = chartBuckets[i];
+                 {chartBuckets.map((bucketData, i) => {
+                   const label = chartLabels[i] || '';
+                   // Don't show every label if too many
+                   const showLabel = viewType !== 'daily' || i % 4 === 0;
                    
                    return (
                      <div 
-                        key={label} 
-                        className="flex flex-1 flex-col items-center gap-2 h-full justify-end group z-0 relative"
-                        onMouseEnter={() => setHoverBar({ label, data: bucketData })}
+                        key={i} 
+                        className="flex flex-1 flex-col items-center gap-2 h-full justify-end relative group hover:z-30"
+                        onMouseEnter={() => setHoverBar({ index: i, label: label || i, data: bucketData })}
                         onMouseLeave={() => setHoverBar(null)}
                      >
                        <div className="w-full bg-slate-800 rounded-sm flex flex-col-reverse justify-start relative overflow-hidden h-full">
@@ -1270,11 +1325,11 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
                            );
                          })}
                        </div>
-                       <span className={`text-[9px] font-bold uppercase text-slate-500`}>{label}</span>
+                       <span className={`text-[9px] font-bold uppercase text-slate-500 ${showLabel ? 'opacity-100' : 'opacity-0'}`}>{label}</span>
                        
-                       {/* Enhanced Tooltip */}
-                       {hoverBar && hoverBar.label === label && (
-                         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-slate-950 p-3 rounded-lg shadow-2xl border border-white/20 z-50 w-40 pointer-events-none">
+                       {/* Enhanced Tooltip - High Z-Index & Translation to prevent cutoff */}
+                       {hoverBar && hoverBar.index === i && (
+                         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-slate-950 p-3 rounded-lg shadow-2xl border border-white/20 z-50 w-32 md:w-40 pointer-events-none">
                             <div className="text-[10px] font-black text-white mb-2 border-b border-white/10 pb-1 uppercase tracking-wider">{label} Breakdown</div>
                             {Object.keys(bucketData.activities).length === 0 ? (
                                 <div className="text-[9px] text-slate-500 italic">No Activity</div>
@@ -1306,8 +1361,25 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
                  })}
               </div>
             </div>
-          </Card>
-        )}
+        </Card>
+
+        <Card>
+          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><Clock size={14} className="text-lime-400" /> Category Split</h3>
+          <div className="space-y-5">
+            {Object.keys(byCategory).length === 0 && <p className="text-slate-600 text-sm italic">No data yet.</p>}
+            {Object.entries(byCategory).map(([cat, hours]) => (
+              <div key={cat}>
+                <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
+                  <span className="text-slate-300">{cat}</span>
+                  <span className="text-lime-400">{hours.toFixed(1)}h</span>
+                </div>
+                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${CATEGORY_COLORS[cat]}`} style={{ width: `${(hours / Math.max(parseFloat(totalHours), 0.1)) * 100}%` }}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </div>
   );
