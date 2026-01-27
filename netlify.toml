@@ -1,0 +1,4 @@
+[build.environment]
+  # Firebase API keys (starting with "AIza") are public by design in client-side apps.
+  # This setting prevents Netlify's secret scanner from failing the build due to this false positive.
+  SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
