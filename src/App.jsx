@@ -7,29 +7,29 @@ import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc
 // --- Constants & Config ---
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const CATEGORIES = ["Self Training", "Training", "Match", "School"];
+const CATEGORIES = ["Shooting", "Footwork", "Match", "Club Training"];
 
 const DEFAULT_DRILLS = [
-  { id: 1, name: "Juggling", defaultTime: 15, category: "Self Training" },
-  { id: 2, name: "Cone Weaving", defaultTime: 20, category: "Self Training" },
-  { id: 3, name: "Wall Passing", defaultTime: 15, category: "Self Training" },
-  { id: 4, name: "Team Scrimmage", defaultTime: 60, category: "Training" },
-  { id: 5, name: "Match Day", defaultTime: 90, category: "Match" },
-  { id: 6, name: "PE / School", defaultTime: 45, category: "School" }
+  { id: 1, name: "Goal Shooting", defaultTime: 15, category: "Shooting" },
+  { id: 2, name: "Wall Ball Rebounds", defaultTime: 10, category: "Footwork" },
+  { id: 3, name: "Agility Shuttles", defaultTime: 15, category: "Footwork" },
+  { id: 4, name: "Club Session", defaultTime: 90, category: "Club Training" },
+  { id: 5, name: "Netball Match", defaultTime: 60, category: "Match" },
+  { id: 6, name: "Core & Stability", defaultTime: 20, category: "Footwork" }
 ];
 
 const CATEGORY_COLORS = {
-  "Self Training": "bg-lime-500",
-  "Training": "bg-blue-500",
+  "Shooting": "bg-cyan-500",
+  "Footwork": "bg-magenta-500", // Tailwind 'pink-500' often works best for magenta
   "Match": "bg-yellow-500",
-  "School": "bg-purple-500"
+  "Club Training": "bg-indigo-500"
 };
 
 const CATEGORY_TEXT_COLORS = {
-  "Self Training": "text-lime-400",
-  "Training": "text-blue-400",
+  "Shooting": "text-cyan-400",
+  "Footwork": "text-pink-400",
   "Match": "text-yellow-400",
-  "School": "text-purple-400"
+  "Club Training": "text-indigo-400"
 };
 
 // --- Historical Seed Data ---
@@ -189,8 +189,8 @@ const playRefereeWhistle = () => {
 const Button = ({ children, onClick, variant = 'primary', className = '', ...props }) => {
   const baseStyle = "px-6 py-3 rounded-lg font-bold uppercase tracking-wider transition-all duration-200 flex items-center justify-center gap-2 touch-manipulation transform active:scale-95";
   const variants = {
-    primary: "bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_20px_rgba(163,230,53,0.3)] hover:shadow-[0_0_30px_rgba(163,230,53,0.5)] border-0",
-    secondary: "bg-white/5 border border-white/10 text-white hover:bg-white/10 hover:border-lime-400/50 backdrop-blur-sm",
+    primary: "bg-cyan-400 hover:bg-cyan-300 text-black shadow-[0_0_20px_rgba(163,230,53,0.3)] hover:shadow-[0_0_30px_rgba(163,230,53,0.5)] border-0",
+    secondary: "bg-white/5 border border-white/10 text-white hover:bg-white/10 hover:border-cyan-400/50 backdrop-blur-sm",
     danger: "bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/50",
     ghost: "text-slate-400 hover:text-white hover:bg-white/5",
     icon: "p-2 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
@@ -217,7 +217,7 @@ const GoalRing = ({ percent }) => {
   const strokeDashoffset = circumference - (Math.min(percent, 100) / 100) * circumference;
   
   // Dynamic color based on percent
-  const ringColor = percent >= 100 ? 'text-lime-400' : 'text-lime-500';
+  const ringColor = percent >= 100 ? 'text-cyan-400' : 'text-cyan-500';
 
   return (
     <div className="relative flex items-center justify-center">
@@ -262,12 +262,12 @@ const ManualEntryModal = ({ title, initialDuration, onSave, onClose }) => {
       <div className="bg-slate-900 border border-white/10 w-full max-w-sm rounded-2xl shadow-2xl p-6">
         <h3 className="font-bold text-lg text-white uppercase tracking-wide mb-4">{title}</h3>
         <div className="mb-6">
-          <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Duration (Minutes)</label>
+          <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">Duration (Minutes)</label>
           <input 
             type="number" 
             value={duration}
             onChange={(e) => setDuration(parseInt(e.target.value) || 0)}
-            className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-2xl font-mono focus:border-lime-400 focus:outline-none"
+            className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-2xl font-mono focus:border-cyan-400 focus:outline-none"
             autoFocus
           />
         </div>
@@ -311,7 +311,7 @@ const AddHistoryEntryModal = ({ onClose, onSave }) => {
               type="date" 
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:outline-none"
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-cyan-400 focus:outline-none"
             />
           </div>
           <div>
@@ -319,7 +319,7 @@ const AddHistoryEntryModal = ({ onClose, onSave }) => {
               <select 
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:outline-none"
+                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-cyan-400 focus:outline-none"
               >
                 {CATEGORIES.map(cat => <option key={cat}>{cat}</option>)}
               </select>
@@ -331,16 +331,16 @@ const AddHistoryEntryModal = ({ onClose, onSave }) => {
               value={drillName}
               onChange={(e) => setDrillName(e.target.value)}
               placeholder={category}
-              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:outline-none"
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-cyan-400 focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Duration (Minutes)</label>
+            <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">Duration (Minutes)</label>
             <input 
               type="number" 
               value={duration}
               onChange={(e) => setDuration(e.target.value)}
-              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-xl font-mono focus:border-lime-400 focus:outline-none"
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-xl font-mono focus:border-cyan-400 focus:outline-none"
             />
           </div>
         </div>
@@ -386,7 +386,7 @@ const FullHistoryModal = ({ logs, onUpdateLog, onDeleteLog, onAddLog, onClose })
 
         <div className="p-4 border-b border-white/5 flex justify-between items-center bg-slate-800/50">
           <h3 className="font-bold text-lg text-white uppercase tracking-wide flex items-center gap-2">
-            <History className="text-lime-400" size={20} /> Full History
+            <History className="text-cyan-400" size={20} /> Full History
           </h3>
           <div className="flex items-center gap-2">
             <Button variant="secondary" className="px-3 py-1 text-xs" onClick={() => setIsAdding(true)}>
@@ -403,7 +403,7 @@ const FullHistoryModal = ({ logs, onUpdateLog, onDeleteLog, onAddLog, onClose })
             <div className="text-center text-slate-500 py-10 italic">No logs found.</div>
           ) : (
             sortedLogs.map(log => (
-              <div key={log.id} className="bg-slate-900 border border-white/5 p-3 rounded-xl flex justify-between items-center group hover:border-lime-400/30 transition-colors">
+              <div key={log.id} className="bg-slate-900 border border-white/5 p-3 rounded-xl flex justify-between items-center group hover:border-cyan-400/30 transition-colors">
                 <div className="flex-1">
                    <div className="flex items-center gap-2 mb-1">
                      <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">
@@ -469,13 +469,13 @@ const EditGoalModal = ({ currentGoal, currentCategories, onSave, onClose }) => {
         
         <div className="space-y-4 mb-6">
           <div>
-            <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Weekly Goal (Hours)</label>
+            <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">Weekly Goal (Hours)</label>
             <input 
               type="number" 
               step="0.5"
               value={goal}
               onChange={(e) => handleWeeklyChange(e.target.value)}
-              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-2xl font-mono focus:border-lime-400 focus:outline-none"
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-2xl font-mono focus:border-cyan-400 focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-4">
@@ -503,7 +503,7 @@ const EditGoalModal = ({ currentGoal, currentCategories, onSave, onClose }) => {
                     type="checkbox" 
                     checked={selectedCategories.includes(cat)}
                     onChange={() => toggleCategory(cat)}
-                    className="w-4 h-4 rounded border-slate-600 text-lime-400 focus:ring-lime-400 bg-slate-900" 
+                    className="w-4 h-4 rounded border-slate-600 text-cyan-400 focus:ring-cyan-400 bg-slate-900" 
                   />
                   <span className={`text-sm font-bold ${selectedCategories.includes(cat) ? 'text-white' : 'text-slate-500'}`}>{cat}</span>
                 </label>
@@ -546,7 +546,7 @@ const EditDrillModal = ({ drill, onSave, onDelete, onClose }) => {
               type="text" 
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
-              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all placeholder:text-slate-600"
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 focus:outline-none transition-all placeholder:text-slate-600"
             />
           </div>
 
@@ -557,7 +557,7 @@ const EditDrillModal = ({ drill, onSave, onDelete, onClose }) => {
                 type="number" 
                 value={formData.defaultTime}
                 onChange={(e) => setFormData({...formData, defaultTime: parseInt(e.target.value) || 0})}
-                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all"
+                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 focus:outline-none transition-all"
               />
             </div>
             <div>
@@ -565,7 +565,7 @@ const EditDrillModal = ({ drill, onSave, onDelete, onClose }) => {
               <select 
                 value={formData.category}
                 onChange={(e) => setFormData({...formData, category: e.target.value})}
-                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all appearance-none"
+                className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 focus:outline-none transition-all appearance-none"
               >
                 {CATEGORIES.map(cat => (
                   <option key={cat} value={cat} className="bg-slate-900">{cat}</option>
@@ -610,7 +610,7 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
       <div className="bg-slate-900 border border-white/10 w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         <div className="p-4 border-b border-white/5 flex justify-between items-center bg-slate-800/50">
           <h3 className="font-bold text-lg text-white uppercase tracking-wide flex items-center gap-2">
-            <Layers className="text-lime-400" size={20} /> Runthrough Setup
+            <Layers className="text-cyan-400" size={20} /> Runthrough Setup
           </h3>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-white/10">
             <X size={20} />
@@ -619,12 +619,12 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
 
         <div className="p-4 flex-1 overflow-y-auto">
           <div className="mb-6 bg-slate-800/50 p-4 rounded-xl border border-white/5">
-            <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Rest Between Drills (Seconds)</label>
+            <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">Rest Between Drills (Seconds)</label>
             <input 
               type="number" 
               value={restTime}
               onChange={(e) => setRestTime(parseInt(e.target.value) || 0)}
-              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-xl font-mono focus:border-lime-400 focus:outline-none"
+              className="w-full p-3 bg-black/40 border border-white/10 rounded-lg text-white text-xl font-mono focus:border-cyan-400 focus:outline-none"
             />
           </div>
 
@@ -641,14 +641,14 @@ const RunthroughSetupModal = ({ drills, onStart, onClose }) => {
                   <button 
                     onClick={() => moveItem(index, -1)} 
                     disabled={index === 0}
-                    className="p-2 text-slate-400 hover:text-lime-400 disabled:opacity-30 disabled:hover:text-slate-400"
+                    className="p-2 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400"
                   >
                     <ChevronUp size={16} />
                   </button>
                   <button 
                     onClick={() => moveItem(index, 1)} 
                     disabled={index === queue.length - 1}
-                    className="p-2 text-slate-400 hover:text-lime-400 disabled:opacity-30 disabled:hover:text-slate-400"
+                    className="p-2 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400"
                   >
                     <ChevronDown size={16} />
                   </button>
@@ -767,13 +767,13 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
 
       <div className="flex-1 flex flex-col items-center justify-center w-full max-w-lg space-y-8">
         <div className="text-center">
-          <div className={`text-sm font-bold uppercase tracking-widest mb-2 px-3 py-1 rounded-full inline-block ${isResting ? 'bg-blue-500 text-white' : 'bg-lime-400 text-black'}`}>
+          <div className={`text-sm font-bold uppercase tracking-widest mb-2 px-3 py-1 rounded-full inline-block ${isResting ? 'bg-blue-500 text-white' : 'bg-cyan-400 text-black'}`}>
             {isResting ? "Rest Period" : `Drill ${currentIndex + 1} of ${queue.length}`}
           </div>
           <h2 className="text-3xl md:text-5xl font-black text-white uppercase italic tracking-wide mt-4">
             {isResting ? "Recover" : currentDrill.name}
           </h2>
-          {!isResting && <p className="text-lime-400 font-bold uppercase tracking-wider text-sm mt-1">{currentDrill.category}</p>}
+          {!isResting && <p className="text-cyan-400 font-bold uppercase tracking-wider text-sm mt-1">{currentDrill.category}</p>}
         </div>
 
         <div className={`font-mono font-bold tabular-nums tracking-tighter transition-all select-none drop-shadow-2xl ${
@@ -799,7 +799,7 @@ const RunthroughTimer = ({ queue, restDuration, onCompleteLog, onExit }) => {
       <div className="flex items-center gap-6 z-10 mb-8">
         <button 
           onClick={() => setIsActive(!isActive)}
-          className={`w-20 h-20 flex items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-105 active:scale-95 ${isResting ? 'bg-blue-500 hover:bg-blue-400' : 'bg-lime-400 hover:bg-lime-300 text-black'}`}
+          className={`w-20 h-20 flex items-center justify-center rounded-full text-white shadow-lg transition-transform hover:scale-105 active:scale-95 ${isResting ? 'bg-blue-500 hover:bg-blue-400' : 'bg-cyan-400 hover:bg-cyan-300 text-black'}`}
         >
           {isActive ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
         </button>
@@ -893,18 +893,18 @@ const CalendarHeatmap = ({ logs }) => {
     <div className="relative p-4 bg-slate-900/50 rounded-xl border border-white/5 overflow-hidden">
       <div className="flex justify-between items-center mb-4">
         <h3 className="font-bold text-white uppercase tracking-wider text-xs flex items-center gap-2">
-          <Calendar size={14} className="text-lime-400" /> Activity Heatmap (2026)
+          <Calendar size={14} className="text-cyan-400" /> Activity Heatmap (2026)
         </h3>
         <div className="flex bg-slate-800 rounded-lg p-0.5">
           <button 
             onClick={() => setViewMode('day')}
-            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === 'day' ? 'bg-lime-400 text-black' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === 'day' ? 'bg-cyan-400 text-black' : 'text-slate-400 hover:text-white'}`}
           >
             By Day
           </button>
           <button 
             onClick={() => setViewMode('week')}
-            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === 'week' ? 'bg-lime-400 text-black' : 'text-slate-400 hover:text-white'}`}
+            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === 'week' ? 'bg-cyan-400 text-black' : 'text-slate-400 hover:text-white'}`}
           >
             By Week
           </button>
@@ -939,7 +939,7 @@ const CalendarHeatmap = ({ logs }) => {
                       key={dayOffset}
                       onMouseEnter={() => setHoverDay({ date, data, title: date.toLocaleDateString() })}
                       onMouseLeave={() => setHoverDay(null)}
-                      className={`w-4 h-4 rounded-sm transition-all hover:ring-2 hover:ring-white/50 cursor-pointer bg-slate-800/50 border border-white/5 ${isToday ? 'ring-1 ring-lime-400' : ''}`}
+                      className={`w-4 h-4 rounded-sm transition-all hover:ring-2 hover:ring-white/50 cursor-pointer bg-slate-800/50 border border-white/5 ${isToday ? 'ring-1 ring-cyan-400' : ''}`}
                     >
                       {cellContent}
                     </div>
@@ -1207,7 +1207,7 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
               <button 
                 key={type}
                 onClick={() => { setViewType(type); setDateOffset(0); }} 
-                className={`px-4 py-2 rounded-md text-xs font-bold uppercase transition-all whitespace-nowrap ${viewType === type ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                className={`px-4 py-2 rounded-md text-xs font-bold uppercase transition-all whitespace-nowrap ${viewType === type ? 'bg-cyan-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}
               >
                 {type}
               </button>
@@ -1228,15 +1228,15 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Goal Progress Card - No Ring */}
-        <Card className="bg-gradient-to-br from-lime-500/10 to-lime-600/5 border-lime-500/20 relative overflow-hidden group cursor-pointer hover:border-lime-400/50 transition-all flex flex-col justify-between" onClick={() => setShowGoalModal(true)}>
-           <div className="text-lime-400 text-[10px] font-bold uppercase tracking-wider mb-2 flex justify-between">
+        <Card className="bg-gradient-to-br from-cyan-500/10 to-cyan-600/5 border-cyan-500/20 relative overflow-hidden group cursor-pointer hover:border-cyan-400/50 transition-all flex flex-col justify-between" onClick={() => setShowGoalModal(true)}>
+           <div className="text-cyan-400 text-[10px] font-bold uppercase tracking-wider mb-2 flex justify-between">
               <span>Goal Progress</span>
               <Pencil size={10} />
           </div>
           
           <div className="text-3xl font-bold text-white tracking-tight">{selfTrainingHours}h</div>
           
-          <div className="text-[9px] text-lime-500/70 uppercase font-bold mt-2">
+          <div className="text-[9px] text-cyan-500/70 uppercase font-bold mt-2">
             Target: {Math.round(targetHours)}h
           </div>
         </Card>
@@ -1251,7 +1251,7 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
         </Card>
         
         {/* Goal Completion Card - With Ring */}
-        <Card className="relative overflow-hidden group cursor-pointer hover:border-lime-400/30 transition-all flex flex-col justify-between" onClick={() => setShowGoalModal(true)}>
+        <Card className="relative overflow-hidden group cursor-pointer hover:border-cyan-400/30 transition-all flex flex-col justify-between" onClick={() => setShowGoalModal(true)}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Activity size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">
             Goal Completion
@@ -1262,13 +1262,13 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
           </div>
         </Card>
 
-        <Card className={`relative overflow-hidden group transition-colors flex flex-col justify-between ${goalAchieved ? 'bg-lime-900/20 border-lime-500/30' : ''}`}>
+        <Card className={`relative overflow-hidden group transition-colors flex flex-col justify-between ${goalAchieved ? 'bg-cyan-900/20 border-cyan-500/30' : ''}`}>
           <div className="absolute top-0 right-0 p-4 text-white opacity-5 group-hover:opacity-10 transition-opacity"><Trophy size={40} /></div>
           <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider mb-1">Target Met?</div>
-          <div className={`text-3xl font-bold tracking-tight ${goalAchieved ? 'text-lime-400' : 'text-slate-500'}`}>
+          <div className={`text-3xl font-bold tracking-tight ${goalAchieved ? 'text-cyan-400' : 'text-slate-500'}`}>
             {goalAchieved ? 'YES' : 'NO'}
           </div>
-          {goalAchieved && <div className="text-[9px] text-lime-400 uppercase font-bold mt-2">Great Job!</div>}
+          {goalAchieved && <div className="text-[9px] text-cyan-400 uppercase font-bold mt-2">Great Job!</div>}
         </Card>
       </div>
 
@@ -1281,15 +1281,15 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
 
       <div className={`grid grid-cols-1 md:grid-cols-2 gap-6`}>
         <Card>
-          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-lime-400" /> Activity Breakdown</h3>
+          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><BarChart2 size={14} className="text-cyan-400" /> Activity Breakdown</h3>
             <div className="relative h-40 mt-4">
               {/* Reference Goal Line - Hidden on Daily view */}
               {viewType !== 'daily' && (
                 <div 
-                  className="absolute w-full border-t border-dashed border-lime-400/50 z-10 pointer-events-none"
+                  className="absolute w-full border-t border-dashed border-cyan-400/50 z-10 pointer-events-none"
                   style={{ bottom: `${goalLinePct}%` }}
                 >
-                  <span className="absolute -top-3 right-0 text-[8px] text-lime-400 font-bold bg-slate-900 px-1">Goal ({(referenceMins/60).toFixed(1)}h)</span>
+                  <span className="absolute -top-3 right-0 text-[8px] text-cyan-400 font-bold bg-slate-900 px-1">Goal ({(referenceMins/60).toFixed(1)}h)</span>
                 </div>
               )}
 
@@ -1350,7 +1350,7 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
                                     })}
                                 </div>
                             )}
-                            <div className="mt-2 pt-1 border-t border-white/10 flex justify-between text-[9px] font-bold text-lime-400">
+                            <div className="mt-2 pt-1 border-t border-white/10 flex justify-between text-[9px] font-bold text-cyan-400">
                                <span>Total</span>
                                <span>{(bucketData.total / 60).toFixed(1)}h</span>
                             </div>
@@ -1364,14 +1364,14 @@ const StatsDashboard = ({ logs, weeklyGoal, goalCategories, setWeeklyGoal, setGo
         </Card>
 
         <Card>
-          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><Clock size={14} className="text-lime-400" /> Category Split</h3>
+          <h3 className="font-bold text-white uppercase tracking-wider mb-6 flex items-center gap-2 text-xs"><Clock size={14} className="text-cyan-400" /> Category Split</h3>
           <div className="space-y-5">
             {Object.keys(byCategory).length === 0 && <p className="text-slate-600 text-sm italic">No data yet.</p>}
             {Object.entries(byCategory).map(([cat, hours]) => (
               <div key={cat}>
                 <div className="flex justify-between text-[10px] font-bold uppercase mb-2">
                   <span className="text-slate-300">{cat}</span>
-                  <span className="text-lime-400">{hours.toFixed(1)}h</span>
+                  <span className="text-cyan-400">{hours.toFixed(1)}h</span>
                 </div>
                 <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${CATEGORY_COLORS[cat]}`} style={{ width: `${(hours / Math.max(parseFloat(totalHours), 0.1)) * 100}%` }}></div>
@@ -1508,14 +1508,14 @@ const Timer = ({ drill, onComplete, onCancel }) => {
       <div className="text-center space-y-10 animate-in zoom-in duration-300 w-full max-w-lg">
         <div>
           <h2 className="text-2xl md:text-4xl font-black text-white italic uppercase tracking-widest mb-2 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">{drill.name}</h2>
-          <p className="text-lime-400 font-bold uppercase tracking-wider text-sm">{drill.category}</p>
+          <p className="text-cyan-400 font-bold uppercase tracking-wider text-sm">{drill.category}</p>
         </div>
         
         <div className="relative group">
            {/* Time Controls */}
            {!isActive && !isFinished && (
             <div className={`absolute -right-4 md:-right-16 top-1/2 -translate-y-1/2 flex flex-col gap-2 transition-opacity ${isActive ? 'opacity-0' : 'opacity-100'}`}>
-              <button onClick={() => adjustTime(1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-lime-400 transition-colors">
+              <button onClick={() => adjustTime(1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-cyan-400 transition-colors">
                 <ChevronUp size={32} />
               </button>
               <button onClick={() => adjustTime(-1)} className="p-2 hover:bg-white/10 rounded-full text-white/30 hover:text-red-400 transition-colors">
@@ -1542,14 +1542,14 @@ const Timer = ({ drill, onComplete, onCancel }) => {
 
             <button 
               onClick={() => setIsActive(!isActive)}
-              className="w-24 h-24 flex items-center justify-center rounded-full bg-lime-400 hover:bg-lime-300 text-black shadow-[0_0_30px_rgba(163,230,53,0.4)] transition-all hover:scale-105 active:scale-95"
+              className="w-24 h-24 flex items-center justify-center rounded-full bg-cyan-400 hover:bg-cyan-300 text-black shadow-[0_0_30px_rgba(163,230,53,0.4)] transition-all hover:scale-105 active:scale-95"
             >
               {isActive ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-2" />}
             </button>
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="text-4xl font-black text-lime-400 uppercase tracking-tighter animate-bounce drop-shadow-[0_0_20px_rgba(163,230,53,0.5)]">DRILL COMPLETE!</div>
+            <div className="text-4xl font-black text-cyan-400 uppercase tracking-tighter animate-bounce drop-shadow-[0_0_20px_rgba(163,230,53,0.5)]">DRILL COMPLETE!</div>
             <Button 
               onClick={() => onComplete(drill.defaultTime)} // Logging default time for now
               className="w-full py-4 text-xl"
@@ -1600,7 +1600,7 @@ const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDe
 
       <div className="flex justify-between items-center gap-4">
         <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2">
-          <Activity className="text-lime-400" /> Select Drill
+          <Activity className="text-cyan-400" /> Select Drill
         </h2>
         <div className="flex gap-2">
           <Button variant="secondary" className="px-3" onClick={onStartRunthrough}>
@@ -1613,34 +1613,34 @@ const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDe
       </div>
 
       {isAdding && (
-        <Card className="bg-lime-400/5 border-lime-400/20 mb-4 animate-in fade-in slide-in-from-top-4">
+        <Card className="bg-cyan-400/5 border-cyan-400/20 mb-4 animate-in fade-in slide-in-from-top-4">
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-lime-400 uppercase mb-2">New Drill Name</label>
+              <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">New Drill Name</label>
               <input 
                 type="text" 
                 value={newDrill.name}
                 onChange={(e) => setNewDrill({...newDrill, name: e.target.value})}
-                className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all placeholder:text-slate-600"
+                className="w-full p-3 bg-black/40 border border-cyan-400/30 rounded-lg text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 focus:outline-none transition-all placeholder:text-slate-600"
                 placeholder="e.g. Penalty Kicks"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Duration (mins)</label>
+                <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">Duration (mins)</label>
                 <input 
                   type="number" 
                   value={newDrill.defaultTime}
                   onChange={(e) => setNewDrill({...newDrill, defaultTime: parseInt(e.target.value)})}
-                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all"
+                  className="w-full p-3 bg-black/40 border border-cyan-400/30 rounded-lg text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 focus:outline-none transition-all"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-lime-400 uppercase mb-2">Category</label>
+                <label className="block text-xs font-bold text-cyan-400 uppercase mb-2">Category</label>
                 <select 
                   value={newDrill.category}
                   onChange={(e) => setNewDrill({...newDrill, category: e.target.value})}
-                  className="w-full p-3 bg-black/40 border border-lime-400/30 rounded-lg text-white focus:border-lime-400 focus:ring-1 focus:ring-lime-400 focus:outline-none transition-all appearance-none"
+                  className="w-full p-3 bg-black/40 border border-cyan-400/30 rounded-lg text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 focus:outline-none transition-all appearance-none"
                 >
                   {CATEGORIES.map(cat => (
                     <option key={cat} value={cat} className="bg-slate-900">{cat}</option>
@@ -1660,16 +1660,16 @@ const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDe
         {drills.map(drill => (
           <div 
             key={drill.id} 
-            className="group relative bg-slate-900/60 backdrop-blur-md border border-white/5 p-5 rounded-2xl hover:border-lime-400/30 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+            className="group relative bg-slate-900/60 backdrop-blur-md border border-white/5 p-5 rounded-2xl hover:border-cyan-400/30 transition-all duration-300 flex flex-col justify-between overflow-hidden"
           >
             {/* Hover Glow Effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-lime-400/0 via-lime-400/0 to-lime-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/0 via-cyan-400/0 to-cyan-400/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
             
             {/* Header: Name & Info */}
             <div className="relative z-10 mb-6">
                <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-bold text-lg text-white group-hover:text-lime-400 transition-colors uppercase tracking-wide truncate max-w-[150px]">{drill.name}</h3>
+                  <h3 className="font-bold text-lg text-white group-hover:text-cyan-400 transition-colors uppercase tracking-wide truncate max-w-[150px]">{drill.name}</h3>
                   <span className="text-[10px] font-bold text-slate-400 bg-white/5 border border-white/5 px-2 py-1 rounded uppercase tracking-wider mt-2 inline-block">
                     {drill.category}
                   </span>
@@ -1692,7 +1692,7 @@ const DrillSelector = ({ drills, onSelectDrill, onManualLog, onUpdateDrill, onDe
             <div className="grid grid-cols-2 gap-3 relative z-10">
               <button 
                 onClick={() => onSelectDrill(drill)}
-                className="bg-lime-400 hover:bg-lime-300 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95"
+                className="bg-cyan-400 hover:bg-cyan-300 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95"
               >
                 <Play size={18} fill="currentColor" /> TIMER
               </button>
@@ -1731,15 +1731,15 @@ const DailyHistory = ({ logs, onUpdateLog, onDeleteLog }) => {
       )}
 
       <h2 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mt-8">
-        <span className="w-2 h-2 bg-lime-400 rounded-full inline-block"></span> Today's Activity
+        <span className="w-2 h-2 bg-cyan-400 rounded-full inline-block"></span> Today's Activity
       </h2>
       <div className="space-y-2">
         {todaysLogs.map(log => (
-          <div key={log.id} className="bg-slate-900/40 border border-white/5 p-4 rounded-xl flex justify-between items-center group hover:border-lime-400/30 transition-colors">
+          <div key={log.id} className="bg-slate-900/40 border border-white/5 p-4 rounded-xl flex justify-between items-center group hover:border-cyan-400/30 transition-colors">
             <div>
               <div className="font-bold text-white">{log.drillName}</div>
               <div className="text-xs text-slate-500 uppercase flex gap-2 mt-1">
-                 <span className="text-lime-400">{log.duration} min</span> • {log.category}
+                 <span className="text-cyan-400">{log.duration} min</span> • {log.category}
                  <span className="text-slate-600">• {new Date(log.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
               </div>
             </div>
@@ -1761,7 +1761,7 @@ const DailyHistory = ({ logs, onUpdateLog, onDeleteLog }) => {
 // --- ActivitySelector Component ---
 const ActivitySelector = ({ onLogActivity, onViewHistory }) => {
   const activities = [
-    { name: "Self Training", icon: Target, color: "text-lime-400", defaultMins: 30 },
+    { name: "Self Training", icon: Target, color: "text-cyan-400", defaultMins: 30 },
     { name: "Training", icon: Dumbbell, color: "text-blue-400", defaultMins: 90 },
     { name: "Match", icon: Trophy, color: "text-yellow-400", defaultMins: 90 },
     { name: "School", icon: Calendar, color: "text-purple-400", defaultMins: 45 }
@@ -1774,7 +1774,7 @@ const ActivitySelector = ({ onLogActivity, onViewHistory }) => {
           <button 
              key={act.name}
              onClick={() => onLogActivity(act.name, act.defaultMins)}
-             className="bg-slate-900/60 border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center gap-4 hover:border-lime-400/50 hover:bg-slate-800 transition-all group shadow-lg"
+             className="bg-slate-900/60 border border-white/5 p-6 rounded-2xl flex flex-col items-center justify-center gap-4 hover:border-cyan-400/50 hover:bg-slate-800 transition-all group shadow-lg"
           >
              <div className={`p-4 rounded-full bg-white/5 group-hover:bg-white/10 transition-colors`}>
                <act.icon size={32} className={`${act.color} group-hover:scale-110 transition-transform`} />
@@ -2010,13 +2010,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black font-sans text-white pb-20 selection:bg-lime-500 selection:text-black">
+    <div className="min-h-screen bg-slate-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black font-sans text-white pb-20 selection:bg-cyan-500 selection:text-black">
       {/* Header */}
       {view !== 'runthrough_active' && view !== 'timer' && (
         <div className="sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-white/5">
           <div className="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-lime-400 rounded-lg flex items-center justify-center text-black font-black text-xl shadow-[0_0_15px_rgba(163,230,53,0.4)] transform -skew-x-6">
+              <div className="w-9 h-9 bg-cyan-400 rounded-lg flex items-center justify-center text-black font-black text-xl shadow-[0_0_15px_rgba(163,230,53,0.4)] transform -skew-x-6">
                 R
               </div>
               <h1 className="font-black text-xl italic uppercase tracking-tighter text-white hidden sm:block">Ray's Tracker</h1>
@@ -2024,9 +2024,9 @@ export default function App() {
             
             {/* Navigation Tabs */}
             <div className="flex bg-slate-900/50 rounded-full p-1 border border-white/5 overflow-x-auto">
-              <button onClick={() => setView('drills')} className={`px-4 md:px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'drills' || view === 'runthrough_setup' ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Drills</button>
-              <button onClick={() => setView('activities')} className={`px-4 md:px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'activities' ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Activities</button>
-              <button onClick={() => setView('stats')} className={`px-4 md:px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'stats' ? 'bg-lime-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Stats</button>
+              <button onClick={() => setView('drills')} className={`px-4 md:px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'drills' || view === 'runthrough_setup' ? 'bg-cyan-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Drills</button>
+              <button onClick={() => setView('activities')} className={`px-4 md:px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'activities' ? 'bg-cyan-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Activities</button>
+              <button onClick={() => setView('stats')} className={`px-4 md:px-6 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${view === 'stats' ? 'bg-cyan-400 text-black shadow-lg' : 'text-slate-400 hover:text-white'}`}>Stats</button>
             </div>
           </div>
         </div>
@@ -2059,7 +2059,7 @@ export default function App() {
         {view === 'activities' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             <section>
-              <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2 mb-6"><Target className="text-lime-400" /> Log Activity</h2>
+              <h2 className="text-xl font-bold text-white uppercase tracking-wide flex items-center gap-2 mb-6"><Target className="text-cyan-400" /> Log Activity</h2>
               <ActivitySelector onLogActivity={handleActivityLog} onViewHistory={() => setShowHistoryModal(true)} />
             </section>
             <section><DailyHistory logs={logs} onUpdateLog={handleUpdateLog} onDeleteLog={handleDeleteLog} /></section>
@@ -2073,10 +2073,10 @@ export default function App() {
             
             <div className={`mt-8 p-4 border text-xs rounded-xl flex items-center gap-3 transition-colors bg-slate-900/50 border-white/5 text-slate-400`}>
               <div className={!user ? 'animate-pulse' : ''}>
-                {!user ? <Loader2 size={16} /> : <Cloud size={16} className="text-lime-400" />}
+                {!user ? <Loader2 size={16} /> : <Cloud size={16} className="text-cyan-400" />}
               </div>
               <div className="flex-1">
-                {!user ? <span>Connecting to Database... (Check Env Vars if stuck)</span> : <span><strong className="text-lime-400 uppercase tracking-wide">Online:</strong> Database Connected.</span>}
+                {!user ? <span>Connecting to Database... (Check Env Vars if stuck)</span> : <span><strong className="text-cyan-400 uppercase tracking-wide">Online:</strong> Database Connected.</span>}
               </div>
             </div>
           </div>
